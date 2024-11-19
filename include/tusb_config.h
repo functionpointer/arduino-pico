@@ -75,6 +75,7 @@
 #define CFG_TUD_MSC              (1)
 #define CFG_TUD_MIDI             (0)
 #define CFG_TUD_VENDOR           (0)
+#define CFG_TUD_NCM              (1)
 
 #define CFG_TUD_CDC_RX_BUFSIZE  (256)
 #define CFG_TUD_CDC_TX_BUFSIZE  (256)
