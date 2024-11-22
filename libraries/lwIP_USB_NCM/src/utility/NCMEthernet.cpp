@@ -20,17 +20,17 @@
 #include "NCMEthernet.h"
 #include <LwipEthernet.h>
 
+static NCMEthernet *_ncm_ethernet_instance = NULL;
+
 NCMEthernet::NCMEthernet(int8_t cs, SPIClass& spi, int8_t intr) : _spi(spi), _cs(cs), _intr(intr) {
 }
 
 bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
-    _netif = net;
-    memcpy(_mac_address, mac_address, 6);
+  _netif = net;
+  memcpy(tud_network_mac_address, _mac_address, 6);
 
-    //todo
-
-    // Success
-    return true;
+  _ncm_ethernet_instance = this;
+  return true;
 }
 
 void NCMEthernet::end() {
@@ -54,25 +54,10 @@ uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
 }
 
 uint16_t NCMEthernet::readFrameSize() {
-    setSn_IR(Sn_IR_RECV);
-
-    uint16_t len = getSn_RX_RSR();
-
-    if (len == 0) {
-        return 0;
-    }
-
-    uint8_t  head[2];
-    uint16_t data_len = 0;
-
-    wizchip_recv_data(head, 2);
-    setSn_CR(Sn_CR_RECV);
-
-    data_len = head[0];
-    data_len = (data_len << 8) + head[1];
-    data_len -= 2;
-
-    return data_len;
+  if(this->received_frame == NULL) {
+    return 0;
+  }
+  return this->received_frame->tot_len;
 }
 
 void NCMEthernet::discardFrame(uint16_t framesize) {
@@ -81,6 +66,7 @@ void NCMEthernet::discardFrame(uint16_t framesize) {
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
+
     wizchip_recv_data(buffer, framesize);
     setSn_CR(Sn_CR_RECV);
 
@@ -89,37 +75,60 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 }
 
 uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
-    ethernet_arch_lwip_gpio_mask(); // So we don't fire an IRQ and interrupt the send w/a receive!
+    // this is basically linkoutput_fn
 
-    // Wait for space in the transmit buffer
-    while (1) {
-        uint16_t freesize = getSn_TX_FSR();
-        if (getSn_SR() == SOCK_CLOSED) {
-            ethernet_arch_lwip_gpio_unmask();
-            return -1;
-        }
-        if (len <= freesize) {
-            break;
-        }
-    };
+  for (;;) {
+    /* if TinyUSB isn't ready, we must signal back to lwip that there is nothing we can do */
+    if (!tud_ready())
+      return 0;
 
-    wizchip_send_data(buf, len);
-    setSn_CR(Sn_CR_SEND);
-
-    while (1) {
-        uint8_t tmp = getSn_IR();
-        if (tmp & Sn_IR_SENDOK) {
-            setSn_IR(Sn_IR_SENDOK);
-            // Packet sent ok
-            break;
-        } else if (tmp & Sn_IR_TIMEOUT) {
-            setSn_IR(Sn_IR_TIMEOUT);
-            // There was a timeout
-            ethernet_arch_lwip_gpio_unmask();
-            return -1;
-        }
+    /* if the network driver can accept another packet, we make it happen */
+    if (tud_network_can_xmit(len)) {
+      tud_network_xmit(buf, 0 /* unused here */);
+      return len;
     }
 
-    ethernet_arch_lwip_gpio_unmask();
-    return len;
+    /* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
+    tud_task();
+  }
 }
+
+bool NCMEthernet::tud_network_init_cb() {
+  /* if the network is re-initializing and we have a leftover packet, we must do a cleanup */
+  if (_ncm_ethernet_instance -> received_frame != NULL) {
+    pbuf_free(_ncm_ethernet_instance->received_frame);
+    _ncm_ethernet_instance->received_frame = NULL;
+  }
+}
+
+bool NCMEthernet::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
+  this->handlepackets();
+}
+
+extern "C" {
+  uint8_t tud_network_mac_address[6] = {0};
+
+  void tud_network_init_cb(void) {
+    if (_ncm_ethernet_instance == NULL){
+      return;
+    }
+    tud_network_init_cb->tud_network_init_cb();
+  }
+
+  bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
+    if (_ncm_ethernet_instance == NULL) {
+      return false;
+    }
+    return _ncm_ethernet_instance->tud_network_recv_cb(src, size);
+  }
+
+  uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
+    struct pbuf *p = (struct pbuf *) ref;
+
+    (void) arg; /* unused for this example */
+
+    return pbuf_copy_partial(p, dst, p->tot_len, 0);
+  }
+
+}
+

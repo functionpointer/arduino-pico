@@ -117,9 +117,12 @@ protected:
     */
     uint16_t readFrameData(uint8_t* frame, uint16_t framesize);
 
+    bool tud_network_recv_cb(const uint8_t *src, uint16_t size);
+    void tud_network_init_cb(void);
+
 private:
-    uint8_t   _mac_address[6];
     netif *_netif;
+    struct pbuf *received_frame;
 
 };
 
