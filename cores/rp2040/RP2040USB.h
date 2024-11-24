@@ -34,6 +34,8 @@ extern void __USBInstallAbsoluteMouse() __attribute__((weak));
 
 extern void __USBInstallMassStorage() __attribute__((weak));
 
+extern void __USBInstallNetworkControlModel() __attribute__((weak));
+
 // Big, global USB mutex, shared with all USB devices to make sure we don't
 // have multiple cores updating the TUSB state in parallel
 extern mutex_t __usb_mutex;

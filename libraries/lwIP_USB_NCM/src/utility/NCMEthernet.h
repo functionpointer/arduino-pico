@@ -120,9 +120,15 @@ protected:
     bool tud_network_recv_cb(const uint8_t *src, uint16_t size);
     void tud_network_init_cb(void);
 
-private:
+protected:
     netif *_netif;
-    struct pbuf *received_frame;
+
+    /*
+     * used when receiving data
+     * see NCMEthernetlwIP.cpp
+     */
+    uint16_t _recv_size;
+    const uint8_t *_recv_data;
 
 };
 

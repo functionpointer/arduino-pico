@@ -20,6 +20,9 @@
 #include "NCMEthernet.h"
 #include <LwipEthernet.h>
 
+// Weak function override to add our descriptor to the TinyUSB list
+void __USBInstallNetworkControlModel() { /* noop */ }
+
 static NCMEthernet *_ncm_ethernet_instance = NULL;
 
 NCMEthernet::NCMEthernet(int8_t cs, SPIClass& spi, int8_t intr) : _spi(spi), _cs(cs), _intr(intr) {
@@ -93,26 +96,18 @@ uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
   }
 }
 
-bool NCMEthernet::tud_network_init_cb() {
-  /* if the network is re-initializing and we have a leftover packet, we must do a cleanup */
-  if (_ncm_ethernet_instance -> received_frame != NULL) {
-    pbuf_free(_ncm_ethernet_instance->received_frame);
-    _ncm_ethernet_instance->received_frame = NULL;
-  }
-}
-
-bool NCMEthernet::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-  this->handlepackets();
-}
-
 extern "C" {
+  /***
+   * Interface to tinyUSB.
+   * See NCMEthernetlwIP.cpp
+   */
   uint8_t tud_network_mac_address[6] = {0};
 
   void tud_network_init_cb(void) {
     if (_ncm_ethernet_instance == NULL){
       return;
     }
-    tud_network_init_cb->tud_network_init_cb();
+    return _ncm_ethernet_instance -> tud_network_init_cb();
   }
 
   bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
