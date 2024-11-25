@@ -27,109 +27,46 @@
 
 class NCMEthernet {
 public:
-    /**
-        Constructor
-    */
-    NCMEthernet();
+    // constructor and methods as required by LwipIntfDev
 
-    /**
-        Initialise the Ethernet controller
-        Must be called before sending or receiving Ethernet frames
+    NCMEthernet(int8_t cs, arduino::SPIClass &spi, int8_t intrpin);
 
-        @param address the local MAC address for the Ethernet interface
-        @return Returns true if setting up the Ethernet interface was successful
-    */
-    bool begin(const uint8_t* address, netif *net);
-
-    /**
-        Shut down the Ethernet controlled
-    */
+    bool begin(const uint8_t *address, netif *netif);
     void end();
 
-    /**
-        Send an Ethernet frame
-        @param data a pointer to the data to send
-        @param datalen the length of the data in the packet
-        @return the number of bytes transmitted
-    */
-    uint16_t sendFrame(const uint8_t* data, uint16_t datalen);
+    uint16_t sendFrame(const uint8_t *data, uint16_t datalen);
 
-    /**
-        Read an Ethernet frame
-        @param buffer a pointer to a buffer to write the packet to
-        @param bufsize the available space in the buffer
-        @return the length of the received packet
-               or 0 if no packet was received
-    */
-    uint16_t readFrame(uint8_t* buffer, uint16_t bufsize);
+    uint16_t readFrameSize();
 
-    /**
-        Check physical link
-        @return true when physical link is up
-    */
-    bool isLinked() {
-        //todo
-        return true;
+    uint16_t readFrameData(uint8_t *buffer, uint16_t bufsize) {
+      (void) buffer;
+      return bufsize;
     }
 
-    /**
-        Report whether ::isLinked() API is implemented
-        @return true when ::isLinked() API is implemented
-    */
-    constexpr bool isLinkDetectable() const {
-        return true;
+    void discardFrame(uint16_t ign) {
+      (void) ign;
+    }
+
+    bool interruptIsPossible() {
+      return false;
+    }
+
+    PinStatus interruptMode() {
+      return HIGH;
     }
 
     constexpr bool needsSPI() const {
-        return false;
+      return false;
     }
-
-protected:
-    static constexpr bool interruptIsPossible() {
-        return false;
-    }
-
-    static constexpr PinStatus interruptMode() {
-        return LOW;
-    }
-
-    /**
-        Read an Ethernet frame size
-        @return the length of data do receive
-               or 0 if no frame was received
-    */
-    uint16_t readFrameSize();
-
-    /**
-        discard an Ethernet frame
-        @param framesize readFrameSize()'s result
-    */
-    void discardFrame(uint16_t framesize);
-
-    /**
-        Read an Ethernet frame data
-           readFrameSize() must be called first,
-           its result must be passed into framesize parameter
-        @param buffer a pointer to a buffer to write the frame to
-        @param framesize readFrameSize()'s result
-        @return the length of the received frame
-               or 0 if a problem occurred
-    */
-    uint16_t readFrameData(uint8_t* frame, uint16_t framesize);
-
-    bool tud_network_recv_cb(const uint8_t *src, uint16_t size);
-    void tud_network_init_cb(void);
-
-protected:
-    netif *_netif;
-
-    /*
-     * used when receiving data
-     * see NCMEthernetlwIP.cpp
-     */
-    uint16_t _recv_size;
-    const uint8_t *_recv_data;
-
 };
+
+extern "C" {
+/***
+ * Interface to tinyUSB.
+ * See NCMEthernetlwIP.cpp
+ */
+extern uint8_t tud_network_mac_address[6];
+
+}
 
 #endif  // NCM_ETHERNET_H

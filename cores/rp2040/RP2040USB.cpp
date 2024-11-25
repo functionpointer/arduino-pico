@@ -289,7 +289,7 @@ void __SetupUSBDescriptor() {
             TUD_CDC_NCM_DESCRIPTOR(ncm_itf, USBD_STR_NCM, USBD_STR_MAC_ADDR, USBD_NCM_NOTIF, USBD_NCM_EPSIZE, USBD_NCM_EPOUT, USBD_NCM_EPIN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
         };
 
-        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (__USBInstallSerial ? sizeof(cdc_desc) : 0) + (hasHID ? sizeof(hid_desc) : 0) + (__USBInstallMassStorage ? sizeof(msd_desc) : 0) + (__USBInstallNetworkControlModel ? sizeof(ncm_desc : 0));
+        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (__USBInstallSerial ? sizeof(cdc_desc) : 0) + (hasHID ? sizeof(hid_desc) : 0) + (__USBInstallMassStorage ? sizeof(msd_desc) : 0) + (__USBInstallNetworkControlModel ? sizeof(ncm_desc) : 0);
 
 #ifdef ENABLE_PICOTOOL_USB
         uint8_t picotool_itf = interface_count++;

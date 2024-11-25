@@ -6,6 +6,9 @@
 #include <NCMEthernetlwIP.h>
 
 const char* host = "djxmmx.net";
+const uint16_t port = 17;
+
+NCMEthernetlwIP eth(0);
 
 void setup() {
   Serial.begin(115200);
@@ -16,7 +19,7 @@ void setup() {
 
   // Start the Ethernet port
   if (!eth.begin()) {
-    Serial.println("No wired Ethernet hardware detected. Check pinouts, wiring.");
+    Serial.println("Failed to initialize NCM Ethernet.");
     while (1) {
       delay(1000);
     }
