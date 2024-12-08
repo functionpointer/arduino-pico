@@ -2,10 +2,6 @@
 #include <LwipEthernet.h>
 #include <tusb.h>
 
-
-// Weak function override to add our descriptor to the TinyUSB list
-void __USBInstallNetworkControlModel() { /* noop */ }
-
 NCMEthernetlwIP *NCMEthernetlwIP::instance = nullptr;
 
 NCMEthernetlwIP::NCMEthernetlwIP() {
@@ -15,54 +11,6 @@ bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
   instance = this;
   return LwipIntfDev<NCMEthernet>::begin(macAddress, mtu);
 }
-
-uint16_t NCMEthernetlwIP::readFrame(uint8_t* buffer, uint16_t bufsize) {
-  uint16_t data_len = readFrameSize();
-
-  if (data_len == 0) {
-    return 0;
-  }
-
-  if (data_len > bufsize) {
-    // Packet is bigger than buffer - drop the packet
-    discardFrame(data_len);
-    return 0;
-  }
-
-  return readFrameData(buffer, data_len);
-}
-
-uint16_t NCMEthernetlwIP::readFrameSize() {
-  return this->_recv_size;
-}
-
-uint16_t NCMEthernetlwIP::readFrameData(uint8_t* buffer, uint16_t framesize) {
-  if (this->_recv_size != framesize) {
-    return 0;
-  }
-  memcpy(buffer, this->_recv_data, this->_recv_size);
-  return this->_recv_size;
-}
-
-uint16_t NCMEthernetlwIP::sendFrame(const uint8_t* buf, uint16_t len) {
-  // this is basically linkoutput_fn
-
-  for (;;) {
-    /* if TinyUSB isn't ready, we must signal back to lwip that there is nothing we can do */
-    if (!tud_ready())
-      return 0;
-
-    /* if the network driver can accept another packet, we make it happen */
-    if (tud_network_can_xmit(len)) {
-      tud_network_xmit((void*)const_cast<uint8_t*>(buf), 0 /* unused here */);
-      return len;
-    }
-
-    /* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
-    tud_task();
-  }
-}
-
 
 
 void NCMEthernetlwIP::tud_network_init_cb() {
@@ -119,10 +67,13 @@ bool NCMEthernetlwIP::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
   return result == ERR_OK;
 }
 
+
 extern "C" {
 /***
  * Interface to tinyUSB.
  */
+
+uint8_t tud_network_mac_address[6] = {0};
 
 void tud_network_init_cb(void) {
   if (NCMEthernetlwIP::instance == NULL){

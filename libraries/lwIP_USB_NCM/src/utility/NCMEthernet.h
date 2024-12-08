@@ -38,10 +38,9 @@ public:
 
     uint16_t readFrameSize();
 
-    uint16_t readFrameData(uint8_t *buffer, uint16_t bufsize) {
-      (void) buffer;
-      return bufsize;
-    }
+    uint16_t readFrameData(uint8_t *buffer, uint16_t bufsize);
+
+    uint16_t readFrame(uint8_t* buffer, uint16_t bufsize);
 
     void discardFrame(uint16_t ign) {
       (void) ign;
@@ -58,15 +57,16 @@ public:
     constexpr bool needsSPI() const {
       return false;
     }
+
+protected:
+    netif *_netif;
+
+    /*
+     * used when receiving data
+     * see NCMEthernetlwIP.cpp
+     */
+    uint16_t _recv_size;
+    const uint8_t *_recv_data;
 };
-
-extern "C" {
-/***
- * Interface to tinyUSB.
- * See NCMEthernetlwIP.cpp
- */
-extern uint8_t tud_network_mac_address[6];
-
-}
 
 #endif  // NCM_ETHERNET_H
