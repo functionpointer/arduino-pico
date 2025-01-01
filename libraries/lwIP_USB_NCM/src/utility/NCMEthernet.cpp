@@ -78,7 +78,7 @@ uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
 
     /* if the network driver can accept another packet, we make it happen */
     if (tud_network_can_xmit(len)) {
-      tud_network_xmit((void*)const_cast<uint8_t*>(buf), 0 /* unused here */);
+      tud_network_xmit((void*)const_cast<uint8_t*>(buf), len);
       return len;
     }
 

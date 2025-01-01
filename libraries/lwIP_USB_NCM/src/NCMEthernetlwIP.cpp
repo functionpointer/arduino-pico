@@ -90,11 +90,12 @@ bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
 }
 
 uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
-  struct pbuf *p = (struct pbuf *) ref;
+  // this is called by tud_network_xmit, which is called by NCMEthernet::sendFrame,
+  // which is called by LwipIntfDev<RawDev>::linkoutput_s
+  // linkoutput_s gives us pbuf->payload and pbuf->len
 
-  (void) arg; /* unused for this example */
-
-  return pbuf_copy_partial(p, dst, p->tot_len, 0);
+  memcpy(dst, ref, arg);
+  return arg;
 }
 
 }
