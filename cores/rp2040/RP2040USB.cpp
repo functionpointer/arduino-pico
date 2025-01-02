@@ -70,9 +70,9 @@ static int __usb_task_irq;
 #define USBD_STR_PRODUCT (0x02)
 #define USBD_STR_SERIAL (0x03)
 #define USBD_STR_CDC (0x04)
-#define USBD_STR_NCM (0x05)
-#define USBD_STR_MAC_ADDR (0x06)
-#define USBD_STR_RPI_RESET (0x07)
+#define USBD_STR_RPI_RESET (0x05)
+#define USBD_STR_NCM (0x06)
+#define USBD_STR_MAC_ADDR (0x07)
 
 #define EPNUM_HID   0x83
 
@@ -125,9 +125,6 @@ const uint8_t *tud_descriptor_device_cb(void) {
     }
     if (__USBInstallMassStorage) {
         usbd_desc_device.idProduct ^= 0x2000;
-    }
-    if (__USBInstallNetworkControlModel) {
-        usbd_desc_device.idProduct |= 0x0200;
     }
     // Set the device class to 0 to indicate multiple device classes
     usbd_desc_device.bDeviceClass = 0;
@@ -263,7 +260,7 @@ void __SetupUSBDescriptor() {
     if (!usbd_desc_cfg) {
         bool hasHID = __USBInstallKeyboard || __USBInstallMouse || __USBInstallAbsoluteMouse || __USBInstallJoystick;
 
-        uint8_t interface_count = (__USBInstallSerial ? 2 : 0) + (hasHID ? 1 : 0) + (__USBInstallMassStorage ? 1 : 0) + (__USBInstallNetworkControlModel ? 1 : 0);
+        uint8_t interface_count = (__USBInstallSerial ? 2 : 0) + (hasHID ? 1 : 0) + (__USBInstallMassStorage ? 1 : 0);
 
         uint8_t cdc_desc[TUD_CDC_DESC_LEN] = {
             // Interface number, string index, protocol, report descriptor len, EP In & Out address, size & polling interval
@@ -278,18 +275,12 @@ void __SetupUSBDescriptor() {
             TUD_HID_DESCRIPTOR(hid_itf, 0, HID_ITF_PROTOCOL_NONE, hid_report_len, EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, (uint8_t)usb_hid_poll_interval)
         };
 
-        uint8_t msd_itf = __USBInstallNetworkControlModel ? interface_count - 2 : interface_count - 1;
+        uint8_t msd_itf = interface_count - 1;
         uint8_t msd_desc[TUD_MSC_DESC_LEN] = {
             TUD_MSC_DESCRIPTOR(msd_itf, 0, USBD_MSC_EPOUT, USBD_MSC_EPIN, USBD_MSC_EPSIZE)
         };
 
-        uint8_t ncm_itf = interface_count - 1;
-        uint8_t ncm_desc[TUD_CDC_NCM_DESC_LEN] = {
-            // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
-            TUD_CDC_NCM_DESCRIPTOR(ncm_itf, USBD_STR_NCM, USBD_STR_MAC_ADDR, USBD_NCM_NOTIF, USBD_NCM_EPSIZE, USBD_NCM_EPOUT, USBD_NCM_EPIN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
-        };
-
-        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (__USBInstallSerial ? sizeof(cdc_desc) : 0) + (hasHID ? sizeof(hid_desc) : 0) + (__USBInstallMassStorage ? sizeof(msd_desc) : 0) + (__USBInstallNetworkControlModel ? sizeof(ncm_desc) : 0);
+        int usbd_desc_len = TUD_CONFIG_DESC_LEN + (__USBInstallSerial ? sizeof(cdc_desc) : 0) + (hasHID ? sizeof(hid_desc) : 0) + (__USBInstallMassStorage ? sizeof(msd_desc) : 0);
 
 #ifdef ENABLE_PICOTOOL_USB
         uint8_t picotool_itf = interface_count++;
@@ -298,6 +289,15 @@ void __SetupUSBDescriptor() {
         };
         usbd_desc_len += sizeof(picotool_desc);
 #endif
+
+        uint8_t ncm_itf = __USBInstallNetworkControlModel ? interface_count++ : 0;
+        uint8_t ncm_desc[TUD_CDC_NCM_DESC_LEN] = {
+                // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
+                TUD_CDC_NCM_DESCRIPTOR(ncm_itf, USBD_STR_NCM, USBD_STR_MAC_ADDR, USBD_NCM_NOTIF, USBD_NCM_EPSIZE, USBD_NCM_EPOUT, USBD_NCM_EPIN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
+        };
+        if (__USBInstallNetworkControlModel) {
+          usbd_desc_len += sizeof(ncm_desc);
+        }
 
         uint8_t tud_cfg_desc[TUD_CONFIG_DESC_LEN] = {
             // Config number, interface count, string index, total length, attribute, power in mA
@@ -323,15 +323,16 @@ void __SetupUSBDescriptor() {
                 memcpy(ptr, msd_desc, sizeof(msd_desc));
                 ptr += sizeof(msd_desc);
             }
-            if (__USBInstallNetworkControlModel) {
-                memcpy(ptr, ncm_desc, sizeof(ncm_desc));
-                ptr += sizeof(ncm_desc);
-            }
 
 #ifdef ENABLE_PICOTOOL_USB
             memcpy(ptr, picotool_desc, sizeof(picotool_desc));
             ptr += sizeof(picotool_desc);
 #endif
+
+            if (__USBInstallNetworkControlModel) {
+              memcpy(ptr, ncm_desc, sizeof(ncm_desc));
+              ptr += sizeof(ncm_desc);
+            }
         }
     }
 }
@@ -349,11 +350,13 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
         [USBD_STR_PRODUCT] = USB_PRODUCT,
         [USBD_STR_SERIAL] = idString,
         [USBD_STR_CDC] = "Board CDC",
-        [USBD_STR_NCM] = "Board NCM",
         // USBD_STR_MAC_ADDR is handled separately below
 #ifdef ENABLE_PICOTOOL_USB
         [USBD_STR_RPI_RESET] = "Reset",
+#else
+        [USBD_STR_RPI_RESET] = "",
 #endif
+        [USBD_STR_NCM] = "Board NCM",
     };
 
     if (!idString[0]) {

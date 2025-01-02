@@ -12,6 +12,8 @@ const uint16_t port = 17;
 //NCMEthernetlwIP eth;
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
   Serial.begin(115200);
   delay(500);
   Serial.println();
@@ -39,9 +41,12 @@ void setup() {
 
 void loop() {
   static unsigned long next_msg = 0;
+  static bool led_on = false;
   if(millis() > next_msg) {
     Serial.println(".");
-    next_msg = millis() + 500;
+    next_msg = millis() + 1000;
+    digitalWrite(LED_BUILTIN, led_on);
+    led_on ^=1;
   }
 
   /*static bool wait = false;
