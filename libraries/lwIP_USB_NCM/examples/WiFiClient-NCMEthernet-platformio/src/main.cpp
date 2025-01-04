@@ -9,7 +9,7 @@
 const char* host = "djxmmx.net";
 const uint16_t port = 17;
 
-//NCMEthernetlwIP eth;
+NCMEthernetlwIP eth;
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -21,22 +21,13 @@ void setup() {
   Serial.println("Starting NCM Ethernet port");
 
   // Start the Ethernet port
-  /*if (!eth.begin()) {
+  if (!eth.begin()) {
     Serial.println("Failed to initialize NCM Ethernet.");
     while (1) {
       delay(1000);
     }
   }
-
-  while (!eth.connected()) {
-    Serial.print(".");
-    delay(500);
-  }
-
-  Serial.println("");
-  Serial.println("Ethernet connected");
-  Serial.println("IP address: ");
-  Serial.println(eth.localIP());*/
+  
 }
 
 void loop() {
@@ -49,7 +40,19 @@ void loop() {
     led_on ^=1;
   }
 
-  /*static bool wait = false;
+  static bool connected = false;
+  if(!eth.connected()) {
+    connected = false;
+    return;
+  } else if(!connected){
+    Serial.println("");
+    Serial.println("Ethernet connected");
+    Serial.println("IP address: ");
+    Serial.println(eth.localIP());
+    connected = true;
+  }
+
+  static bool wait = false;
 
   Serial.print("connecting to ");
   Serial.print(host);
@@ -97,5 +100,5 @@ void loop() {
   if (wait) {
     delay(300000);  // execute once every 5 minutes, don't flood remote service
   }
-  wait = true;*/
+  wait = true;
 }

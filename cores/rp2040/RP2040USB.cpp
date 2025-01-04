@@ -54,10 +54,7 @@ static int __usb_task_irq;
 #define USBD_PID (0x000a) // Raspberry Pi Pico SDK CDC
 #endif
 
-#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
-
 #define USBD_ITF_CDC (0) // needs 2 interfaces
-#define USBD_ITF_MAX (2)
 
 #define USBD_CDC_EP_CMD (0x81)
 #define USBD_CDC_EP_OUT (0x02)
@@ -80,9 +77,9 @@ static int __usb_task_irq;
 #define USBD_MSC_EPIN 0x84
 #define USBD_MSC_EPSIZE 64
 
-#define USBD_NCM_EPOUT 0x04
-#define USBD_NCM_EPIN 0x85
-#define USBD_NCM_NOTIF 0x86
+#define USBD_NCM_NOTIF 0x85
+#define USBD_NCM_EPOUT 0x06
+#define USBD_NCM_EPIN 0x86
 #define USBD_NCM_EPSIZE 64
 
 #define TUD_RPI_RESET_DESCRIPTOR(_itfnum, _stridx) \
@@ -289,8 +286,8 @@ void __SetupUSBDescriptor() {
         };
         usbd_desc_len += sizeof(picotool_desc);
 #endif
-
         uint8_t ncm_itf = __USBInstallNetworkControlModel ? interface_count++ : 0;
+        interface_count++; // USB NCM needs two interfaces
         uint8_t ncm_desc[TUD_CDC_NCM_DESC_LEN] = {
                 // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
                 TUD_CDC_NCM_DESCRIPTOR(ncm_itf, USBD_STR_NCM, USBD_STR_MAC_ADDR, USBD_NCM_NOTIF, USBD_NCM_EPSIZE, USBD_NCM_EPOUT, USBD_NCM_EPIN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
