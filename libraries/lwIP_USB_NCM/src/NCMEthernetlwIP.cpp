@@ -8,8 +8,11 @@ NCMEthernetlwIP::NCMEthernetlwIP() {
 }
 
 bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
-  instance = this;
-  return LwipIntfDev<NCMEthernet>::begin(macAddress, mtu);
+    bool ret = LwipIntfDev<NCMEthernet>::begin(macAddress, mtu);
+    if (ret) {
+        instance = this;
+    }
+    return ret;
 }
 
 
@@ -49,17 +52,19 @@ void NCMEthernetlwIP::tud_network_init_cb() {
  */
 bool NCMEthernetlwIP::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
   ethernet_arch_lwip_begin();
-  this->handlePackets();
 
   //leave data for readFrameSize and readFrameData to find
   this->_recv_data = src;
   this->_recv_size = size;
 
+  // LwipIntfDev::handlePackets will call readFrameSize and readFrameData
   err_t result = this->handlePackets();
 
   //and clean it up again before giving the buffer back to tinyUSB
   this->_recv_data = NULL;
   this->_recv_size = 0;
+
+  tud_network_recv_renew();
 
   sys_check_timeouts();
   ethernet_arch_lwip_end();

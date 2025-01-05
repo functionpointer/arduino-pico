@@ -106,7 +106,7 @@ const uint8_t *tud_descriptor_device_cb(void) {
         .iSerialNumber = USBD_STR_SERIAL,
         .bNumConfigurations = 1
     };
-    if (__USBInstallSerial && !__USBInstallKeyboard && !__USBInstallMouse && !__USBInstallAbsoluteMouse && !__USBInstallJoystick && !__USBInstallMassStorage) {
+    if (__USBInstallSerial && !__USBInstallKeyboard && !__USBInstallMouse && !__USBInstallAbsoluteMouse && !__USBInstallJoystick && !__USBInstallMassStorage && !__USBInstallNetworkControlModel) {
         // Can use as-is, this is the default USB case
         return (const uint8_t *)&usbd_desc_device;
     }
@@ -117,7 +117,7 @@ const uint8_t *tud_descriptor_device_cb(void) {
     if (__USBInstallMouse || __USBInstallAbsoluteMouse) {
         usbd_desc_device.idProduct |= 0x4000;
     }
-    if (__USBInstallJoystick) {
+    if (__USBInstallJoystick || __USBInstallNetworkControlModel) {
         usbd_desc_device.idProduct |= 0x0100;
     }
     if (__USBInstallMassStorage) {
@@ -287,12 +287,12 @@ void __SetupUSBDescriptor() {
         usbd_desc_len += sizeof(picotool_desc);
 #endif
         uint8_t ncm_itf = __USBInstallNetworkControlModel ? interface_count++ : 0;
-        interface_count++; // USB NCM needs two interfaces
         uint8_t ncm_desc[TUD_CDC_NCM_DESC_LEN] = {
                 // Interface number, description string index, MAC address string index, EP notification address and size, EP data address (out, in), and size, max segment size.
                 TUD_CDC_NCM_DESCRIPTOR(ncm_itf, USBD_STR_NCM, USBD_STR_MAC_ADDR, USBD_NCM_NOTIF, USBD_NCM_EPSIZE, USBD_NCM_EPOUT, USBD_NCM_EPIN, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
         };
         if (__USBInstallNetworkControlModel) {
+          interface_count++; // USB NCM needs two interfaces
           usbd_desc_len += sizeof(ncm_desc);
         }
 

@@ -10,22 +10,31 @@ const char* host = "djxmmx.net";
 const uint16_t port = 17;
 
 NCMEthernetlwIP eth;
+IPAddress my_static_ip_addr(192, 168, 137, 100);
+IPAddress my_static_gateway_and_dns_addr(192, 168, 137, 1);
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.begin(115200);
-  delay(500);
+  delay(5000);
   Serial.println();
   Serial.println();
   Serial.println("Starting NCM Ethernet port");
 
+  
+  //optional static config
+  eth.config(my_static_ip_addr, my_static_gateway_and_dns_addr, IPAddress(255, 255, 255, 0), my_static_gateway_and_dns_addr);
+  
   // Start the Ethernet port
+  // This starts DHCP in case config() was not called before
   if (!eth.begin()) {
-    Serial.println("Failed to initialize NCM Ethernet.");
     while (1) {
+      Serial.println("Failed to initialize NCM Ethernet.");
       delay(1000);
     }
+  } else {
+    Serial.println("NCM Ethernet started successfully.");
   }
   
 }
