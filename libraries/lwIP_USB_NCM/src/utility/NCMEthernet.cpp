@@ -57,15 +57,26 @@ uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
 }
 
 uint16_t NCMEthernet::readFrameSize() {
-  return this->_recv_size;
+  return _ncmethernet_recv_size;
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
-  if (this->_recv_size != framesize) {
-    return 0;
+  if (_ncmethernet_recv_size != framesize) {
+      return 0;
   }
-  memcpy(buffer, this->_recv_data, this->_recv_size);
-  return this->_recv_size;
+
+  noInterrupts();
+  memcpy(buffer, (const void*)_ncmethernet_recv_data, _ncmethernet_recv_size);
+  uint16_t recv_size = _ncmethernet_recv_size;
+
+  // ready to receive next packet
+  _ncmethernet_recv_data = NULL;
+  _ncmethernet_recv_size = 0;
+  interrupts();
+
+  tud_network_recv_renew();
+
+  return recv_size;
 }
 
 uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
@@ -85,4 +96,9 @@ uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
     /* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
     tud_task();
   }
+}
+
+extern "C" {
+    volatile uint16_t _ncmethernet_recv_size = 0;
+    volatile const uint8_t *_ncmethernet_recv_data = nullptr;
 }

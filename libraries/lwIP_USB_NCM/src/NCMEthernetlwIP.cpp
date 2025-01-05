@@ -9,17 +9,17 @@ NCMEthernetlwIP::NCMEthernetlwIP() {
 
 bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
     bool ret = LwipIntfDev<NCMEthernet>::begin(macAddress, mtu);
-    if (ret) {
-        instance = this;
+    if (!ret) {
+        return false;
     }
-    return ret;
+    return true;
 }
 
 
 void NCMEthernetlwIP::tud_network_init_cb() {
   /* if the network is re-initializing and we have a leftover packet, we must do a cleanup */
-  this->_recv_data = NULL;
-  this->_recv_size = 0;
+  _ncmethernet_recv_data = NULL;
+  _ncmethernet_recv_size = 0;
 }
 
 /**
@@ -51,11 +51,12 @@ void NCMEthernetlwIP::tud_network_init_cb() {
  * @return
  */
 bool NCMEthernetlwIP::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-  ethernet_arch_lwip_begin();
 
-  //leave data for readFrameSize and readFrameData to find
-  this->_recv_data = src;
-  this->_recv_size = size;
+    return true;
+
+    /*ethernet_arch_lwip_begin();
+
+
 
   // LwipIntfDev::handlePackets will call readFrameSize and readFrameData
   err_t result = this->handlePackets();
@@ -69,7 +70,7 @@ bool NCMEthernetlwIP::tud_network_recv_cb(const uint8_t *src, uint16_t size) {
   sys_check_timeouts();
   ethernet_arch_lwip_end();
 
-  return result == ERR_OK;
+  return result == ERR_OK;*/
 }
 
 
@@ -88,10 +89,17 @@ void tud_network_init_cb(void) {
 }
 
 bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-  if (NCMEthernetlwIP::instance == NULL) {
+  if(_ncmethernet_recv_size != 0) {
+      return false;
+  }
+  //leave data for readFrameSize and readFrameData to find
+  _ncmethernet_recv_size = size;
+  _ncmethernet_recv_data = src;
+  return true;
+  /*if (NCMEthernetlwIP::instance == NULL) {
     return false;
   }
-  return NCMEthernetlwIP::instance->tud_network_recv_cb(src, size);
+  return NCMEthernetlwIP::instance->tud_network_recv_cb(src, size);*/
 }
 
 uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {

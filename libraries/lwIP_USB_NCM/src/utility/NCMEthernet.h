@@ -60,13 +60,11 @@ public:
 
 protected:
     netif *_netif;
-
-    /*
-     * used when receiving data
-     * see NCMEthernetlwIP.cpp
-     */
-    uint16_t _recv_size;
-    const uint8_t *_recv_data;
 };
+
+extern "C" {
+extern volatile uint16_t _ncmethernet_recv_size;
+extern volatile const uint8_t *_ncmethernet_recv_data;
+}
 
 #endif  // NCM_ETHERNET_H
