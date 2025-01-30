@@ -33,11 +33,27 @@ NCMEthernet::NCMEthernet(int8_t cs, arduino::SPIClass &spi, int8_t intrpin) {
 bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
   (void) net;
   memcpy(tud_network_mac_address, mac_address, 6);
+
+  this->_current_packet.size = 0;
+  this->_current_packet.src = nullptr;
   return true;
 }
 
 void NCMEthernet::end() {
 
+}
+
+bool NCMEthernet::_fill_current_packet() {
+  if(this->_current_packet.size > 0) {
+    return true;
+  }
+  return queue_try_remove(&_ncmethernet_recv_q, &this->_current_packet);
+}
+
+void NCMEthernet::_empty_current_packet() {
+  this->_current_packet.size = 0;
+  this->_current_packet.src = nullptr;
+  tud_network_recv_renew();
 }
 
 uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
@@ -61,22 +77,18 @@ uint16_t NCMEthernet::readFrameSize() {
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
-  if (_ncmethernet_recv_size != framesize) {
+  if (!this->_fill_current_packet()) {
+    return 0;
+  }
+  if (this->_current_packet.size != framesize) {
       return 0;
   }
 
-  noInterrupts();
-  memcpy(buffer, (const void*)_ncmethernet_recv_data, _ncmethernet_recv_size);
-  uint16_t recv_size = _ncmethernet_recv_size;
+  memcpy(buffer, (const void*)this->_current_packet.src, this->_current_packet.size);
 
-  // ready to receive next packet
-  _ncmethernet_recv_data = NULL;
-  _ncmethernet_recv_size = 0;
-  interrupts();
+  this->_empty_current_packet();
 
-  tud_network_recv_renew();
-
-  return recv_size;
+  return this->_current_packet.size;
 }
 
 uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
@@ -99,6 +111,7 @@ uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
 }
 
 extern "C" {
-    volatile uint16_t _ncmethernet_recv_size = 0;
-    volatile const uint8_t *_ncmethernet_recv_data = nullptr;
+  // queue to transfer packet pointers between tinyusb tud_network_recv_cb
+  // and readFrameSize/readFrameData
+  queue_t _ncmethernet_recv_q;
 }

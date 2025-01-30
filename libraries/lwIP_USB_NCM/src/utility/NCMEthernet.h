@@ -22,8 +22,18 @@
 
 #include <stdint.h>
 #include <Arduino.h>
+#include "pico/util/queue.h"
 #include <SPI.h>
 #include <LwipEthernet.h>
+
+extern "C" {
+extern queue_t _ncmethernet_recv_q;
+typedef struct _ncmethernet_packet {
+    const uint8_t *src;
+    uint16_t size;
+} _ncmethernet_packet;
+async_when_pending_worker_t _ncm_ethernet_recv_irq_worker;
+}
 
 class NCMEthernet {
 public:
@@ -60,11 +70,12 @@ public:
 
 protected:
     netif *_netif;
+    _ncmethernet_packet _current_packet;
+
+    bool _fill_current_packet();
+    void _empty_current_packet();
 };
 
-extern "C" {
-extern volatile uint16_t _ncmethernet_recv_size;
-extern volatile const uint8_t *_ncmethernet_recv_data;
-}
+
 
 #endif  // NCM_ETHERNET_H

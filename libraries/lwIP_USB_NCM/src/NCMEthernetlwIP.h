@@ -14,7 +14,9 @@ public:
     bool tud_network_recv_cb(const uint8_t *src, uint16_t size);
     void tud_network_init_cb(void);
 
-    static NCMEthernetlwIP* instance;
+protected:
+
+    void recv_irq_work(async_context_t *context, async_when_pending_worker_t *worker);
 };
 
 extern "C" {
