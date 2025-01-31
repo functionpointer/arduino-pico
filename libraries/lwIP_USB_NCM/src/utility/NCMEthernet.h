@@ -25,14 +25,17 @@
 #include "pico/util/queue.h"
 #include <SPI.h>
 #include <LwipEthernet.h>
+#include <pico/async_context_threadsafe_background.h>
+#include <pico/critical_section.h>
 
 extern "C" {
 extern queue_t _ncmethernet_recv_q;
-typedef struct _ncmethernet_packet {
+typedef struct _ncmethernet_packet_t {
     const uint8_t *src;
     uint16_t size;
-} _ncmethernet_packet;
-async_when_pending_worker_t _ncm_ethernet_recv_irq_worker;
+} _ncmethernet_packet_t;
+extern critical_section_t _ncmethernet_pkg_critical_section;
+extern _ncmethernet_packet_t _ncmethernet_pkg;
 }
 
 class NCMEthernet {
@@ -70,7 +73,7 @@ public:
 
 protected:
     netif *_netif;
-    _ncmethernet_packet _current_packet;
+    _ncmethernet_packet_t _current_packet;
 
     bool _fill_current_packet();
     void _empty_current_packet();
