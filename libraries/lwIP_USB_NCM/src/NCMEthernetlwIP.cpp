@@ -51,6 +51,10 @@ void tud_network_init_cb(void) {
 }
 
 bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
+    if(_ncmethernet_pkg.size > 0) {
+        return false;
+    };
+
     critical_section_enter_blocking(&_ncmethernet_pkg_critical_section);
     _ncmethernet_pkg.src = src;
     _ncmethernet_pkg.size = size;
