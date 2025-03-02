@@ -73,10 +73,6 @@ public:
 
 protected:
     netif *_netif;
-    _ncmethernet_packet_t _current_packet;
-
-    bool _fill_current_packet();
-    void _empty_current_packet();
 };
 
 

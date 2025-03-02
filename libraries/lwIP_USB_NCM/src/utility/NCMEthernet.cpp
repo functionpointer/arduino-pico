@@ -47,33 +47,6 @@ void NCMEthernet::end() {
 
 }
 
-bool NCMEthernet::_fill_current_packet() {
-    if(this->_current_packet.size > 0) {
-        return true;
-    }
-
-    critical_section_enter_blocking(&_ncmethernet_pkg_critical_section);
-    this->_current_packet.src = _ncmethernet_pkg.src;
-    this->_current_packet.size = _ncmethernet_pkg.size;
-    critical_section_exit(&_ncmethernet_pkg_critical_section);
-
-  return this->_current_packet.size > 0;
-}
-
-void NCMEthernet::_empty_current_packet() {
-    if (this->_current_packet.size == 0) {
-        return;
-    }
-    critical_section_enter_blocking(&_ncmethernet_pkg_critical_section);
-    _ncmethernet_pkg.src = nullptr;
-    _ncmethernet_pkg.size = 0;
-    critical_section_exit(&_ncmethernet_pkg_critical_section);
-
-    this->_current_packet.size = 0;
-    this->_current_packet.src = nullptr;
-    tud_network_recv_renew();
-}
-
 uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
   uint16_t data_len = this->readFrameSize();
 
@@ -91,26 +64,19 @@ uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
 }
 
 uint16_t NCMEthernet::readFrameSize() {
-    if (!this->_fill_current_packet()) {
-        return 0;
-    }
-    return this->_current_packet.size;
+    return _ncmethernet_pkg.size;
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
-  if (!this->_fill_current_packet()) {
-    return 0;
-  }
-  if (this->_current_packet.size != framesize) {
-      return 0;
-  }
+    critical_section_enter_blocking(&_ncmethernet_pkg_critical_section);
 
-  size_t size = this->_current_packet.size;
-  memcpy(buffer, (const void*)this->_current_packet.src, size);
+    size_t size = _ncmethernet_pkg.size;
+    memcpy(buffer, (const void*)_ncmethernet_pkg.src, size);
+    _ncmethernet_pkg.size = 0;
 
-  this->_empty_current_packet();
+    critical_section_exit(&_ncmethernet_pkg_critical_section);
 
-  return size;
+    return size;
 }
 
 uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
