@@ -36,7 +36,12 @@ bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
 
   if (!critical_section_is_initialized(&_ncmethernet_pkg_critical_section)) {
       critical_section_init(&_ncmethernet_pkg_critical_section);
+      critical_section_enter_blocking(&_ncmethernet_pkg_critical_section);
+      _ncmethernet_pkg.size = 0;
+      _ncmethernet_pkg.src = nullptr;
+      critical_section_exit(&_ncmethernet_pkg_critical_section);
   }
+
   return true;
 }
 
