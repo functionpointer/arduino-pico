@@ -2,11 +2,16 @@
 #include <LwipEthernet.h>
 #include <tusb.h>
 #include <pico/async_context_threadsafe_background.h>
+#include "USB.h"
+#include <Arduino.h>
 
 async_when_pending_worker_t _ncm_ethernet_recv_irq_worker;
 NCMEthernetlwIP *_ncm_ethernet_instance;
 
 #define USBD_NCM_EPSIZE 64
+
+NCMEthernetlwIP::NCMEthernetlwIP() {
+}
 
 // Need to define here so we don't have to include tusb.h in global header (causes problemw w/BT redefining things)
 void NCMEthernetlwIP::interfaceCB(int itf, uint8_t *dst, int len) {
@@ -15,9 +20,6 @@ void NCMEthernetlwIP::interfaceCB(int itf, uint8_t *dst, int len) {
         TUD_CDC_NCM_DESCRIPTOR((uint8_t)itf, _strID, _strMac, _epNotif, USBD_NCM_EPSIZE, _epOut, _epIn, CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU)
     };
     memcpy(dst, desc, len);
-};
-
-NCMEthernetlwIP::NCMEthernetlwIP() {
 }
 
 bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
@@ -31,15 +33,14 @@ bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
     _epOut = USB.registerEndpointOut();
     _epNotif = USB.registerEndpointIn();
     _strID = USB.registerString("Pico NCM");
-    char macaddr_str[sizeof(tud_network_mac_address)*2+2] = {0};
     uint8_t len = 0;
-    for (unsigned i=0; i<sizeof(tud_network_mac_address); i++) {
-        macaddr_str[len++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 4) & 0xf];
-        macaddr_str[len++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 0) & 0xf];
+    for (unsigned i=0; i<6; i++) {
+        macAddrStr[len++] = "0123456789ABCDEF"[(macAddress[i] >> 4) & 0xf];
+        macAddrStr[len++] = "0123456789ABCDEF"[(macAddress[i] >> 0) & 0xf];
     }
-    _strMac = USB.registerString(macaddr_str);
+    _strMac = USB.registerString(macAddrStr);
 
-    _id = USB.registerInterface(2, _cb, (void *)this, TUD_CDC_NCM_DESC_LEN, 4, 0);
+    _id = USB.registerInterface(2, _cb, (void *)this, TUD_CDC_NCM_DESC_LEN, 3, 0);
 
     USB.connect();
     _running = true;

@@ -77,9 +77,6 @@ protected:
 
     bool _fill_current_packet();
     void _empty_current_packet();
-
-private:
-    bool _running = false;
 };
 
 
