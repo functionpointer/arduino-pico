@@ -25,8 +25,14 @@
 #include "pico/util/queue.h"
 #include <SPI.h>
 #include <LwipEthernet.h>
+#include <LwipIntfDev.h>
+
 #include <pico/async_context_threadsafe_background.h>
 #include <pico/critical_section.h>
+
+#ifndef NCMETHERNET_RECV_QUEUE_LENGTH
+#define NCMETHERNET_RECV_QUEUE_LENGTH 4
+#endif
 
 extern "C" {
     typedef struct _ncmethernet_packet_t {
@@ -65,9 +71,7 @@ public:
 
     uint16_t readFrame(uint8_t* buffer, uint16_t bufsize);
 
-    void discardFrame(uint16_t ign) {
-        (void) ign;
-    }
+    void discardFrame(uint16_t ign);
 
     bool interruptIsPossible() {
         return false;
@@ -89,7 +93,9 @@ public:
     async_when_pending_worker_t _recv_irq_worker;
 
     critical_section_t _recv_critical_section;
-    ncmethernet_packet_t _recv_pkg;
+#ifdef __FREERTOS
+	QueueHandle_t _recv_queue;
+#endif
 protected:
     netif *_netif;
     uint8_t _id;
@@ -107,6 +113,8 @@ protected:
         NCMEthernet *d = static_cast<NCMEthernet*>(worker->user_data);
         d->packetReceivedIRQWorker(d);
     }
+
+
 };
 
 extern "C" {
