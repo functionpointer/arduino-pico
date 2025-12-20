@@ -153,7 +153,7 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 #endif
 }
 
-void discardFrame(uint16_t ign) {
+void NCMEthernet::discardFrame(uint16_t ign) {
 #ifdef __FREERTOS
     ncmethernet_packet_t p;
     xQueueReceive(this->_recv_queue, &p, 0);
@@ -271,7 +271,7 @@ extern "C" {
 
         // calling _irq() this way is fragile
         // it expects to be called from ISR context, but we call it from some random task context instead
-        // it will cause xQueueSendFromISR to be used, which isn't ideal
+        // it will cause xQueueSendFromISR to be used, which isn't ideal from non-ISR context
         // but IMPORTANTLY it won't block this task waiting for a response
 
         // _irq() ends up writing to and enqueuing LwipIntfDev::_irqBuffer inside lwip_callback()
@@ -279,8 +279,7 @@ extern "C" {
         // however, that doesn't do anything in our case
         // should be fine anyways as the data is always the same (LwipIntfDev<NCMEthernet>::_lwipCallback, _ncm_ethernet_instance)
 
-        LwipIntfDev<NCMEthernet> *d = static_cast<LwipIntfDev<NCMEthernet>*>(instance);
-        d->_irq(_ncm_ethernet_instance);
+		_ncm_ethernet_instance->packetReceivedIRQWorker(_ncm_ethernet_instance);
 
 #else
         critical_section_enter_blocking(&_ncm_ethernet_instance->_recv_critical_section);

@@ -13,7 +13,7 @@ NCMEthernetlwIP eth;
 IPAddress my_static_ip_addr(192, 168, 137, 100);
 IPAddress my_static_gateway_and_dns_addr(192, 168, 137, 1);
 
-#define USE_REAL_UART
+//#define USE_REAL_UART
 
 #if defined(USE_REAL_UART)
 #define SER Serial1
@@ -39,7 +39,7 @@ void setup() {
 
 
     //optional static config
-    // eth.config(my_static_ip_addr, my_static_gateway_and_dns_addr, IPAddress(255, 255, 255, 0), my_static_gateway_and_dns_addr);
+    eth.config(my_static_ip_addr, my_static_gateway_and_dns_addr, IPAddress(255, 255, 255, 0), my_static_gateway_and_dns_addr);
 
     // Start the Ethernet port
     // This starts DHCP in case config() was not called before
