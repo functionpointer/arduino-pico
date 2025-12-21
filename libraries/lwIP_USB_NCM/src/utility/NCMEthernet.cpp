@@ -22,12 +22,6 @@
 #include <tusb.h>
 #include "USB.h"
 
-#ifdef __FREERTOS
-#include "FreeRTOS.h"
-#include "semphr.h"
-#include "freertos/freertos-lwip.h"
-#endif
-
 #define USBD_NCM_EPSIZE 64
 
 NCMEthernet::NCMEthernet(int8_t cs, arduino::SPIClass &spi, int8_t intrpin) {
@@ -46,13 +40,8 @@ bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
         panic("Unable to allocate NCMEthernet recv queue");
     }
 #else
-    if (!critical_section_is_initialized(&this->_recv_critical_section)) {
-        critical_section_init(&this->_recv_critical_section);
-        critical_section_enter_blocking(&this->_recv_critical_section);
-        this->_recv_pkg.size = 0;
-        this->_recv_pkg.src = nullptr;
-        critical_section_exit(&this->_recv_critical_section);
-    }
+	queue_init(&this->_recv_queue, sizeof(ncmethernet_packet_t), NCMETHERNET_RECV_QUEUE_LENGTH);
+	// queue_init(this->_xmit_queue, sizeof(pbuf_t*), NCMETHERNET_XMIT_QUEUE_LENGTH);
 
     async_context_threadsafe_background_config_t config = async_context_threadsafe_background_default_config();
     if (!async_context_threadsafe_background_init(&this->_async_context, &config)) {
@@ -134,50 +123,91 @@ uint16_t NCMEthernet::readFrameSize() {
         // no packet in queue
         return 0;
     }
-    return p.size;
+#else
+	if(!queue_try_peek(&this->_recv_queue, &p)) {
+		return 0;
+	}
 #endif
+	return p.size;
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
+	ncmethernet_packet_t p;
 #ifdef __FREERTOS
-    ncmethernet_packet_t p;
     if (!xQueueReceive(this->_recv_queue, &p, 0)) {
         return 0;
     }
-    memcpy(buffer, (const void*)p.src, min(framesize, p.size));
-    // do we need __get_freertos_mutex_for_ptr(&USB.mutex) for this?
-    // we certainly could block to get it without an issue
-    // just slower, might cause more task switches
-    tud_network_recv_renew();
-    return p.size;
+#else
+	if(!queue_try_remove(&this->_recv_queue, &p)) {
+		return 0;
+	}
 #endif
+    memcpy(buffer, (const void*)p.src, min(framesize, p.size));
+
+#ifdef __FREERTOS
+	// do we need __get_freertos_mutex_for_ptr(&USB.mutex) for recv_renew?
+    // in FreeRTOS we certainly could block to get it without an issue
+    // just slower, might cause more task switches
+#else
+	// do we need &USB.mutex for recv_renew?
+	// we __cannot__ block because we are likely in IRQ context
+#endif
+    tud_network_recv_renew();
+
+    return p.size;
+
 }
 
 void NCMEthernet::discardFrame(uint16_t ign) {
+	ncmethernet_packet_t p;
 #ifdef __FREERTOS
-    ncmethernet_packet_t p;
     xQueueReceive(this->_recv_queue, &p, 0);
-    tud_network_recv_renew();
+#else
+	queue_try_remove(&this->_recv_queue, &p);
 #endif
+	tud_network_recv_renew();
 }
 
 uint16_t NCMEthernet::sendFrame(const uint8_t* buf, uint16_t len) {
     // this is basically linkoutput_fn
+#ifdef __FREERTOS
     // in case of freeRTOS we will be in the lwip task
-
     // blocking get of __get_freertos_mutex_for_ptr(&USB.mutex)
     // may block lwip task and thats ok, see tud_network_recv_cb()
-    CoreMutex m(&USB.mutex, false);
+	CoreMutex m(&USB.mutex, false);
+#else
+	// in case of baremetal we are probably in IRQ context
+	// we should be holding lwip mutex, but not USB mutex
 
-    for (;;) {
+	// USB mutex is probably free, so we try to take it
+    uint32_t owner;
+    if (!mutex_try_enter(&USB.mutex, &owner)) {
+		// no mutex. we can't block to get it as we are in IRQ context
+		// so we can either drop the packet
+		// or enqueue it into a queue
+		// and then process it later somehow
+		// however, enqueing would require either memcpy or pbuf_ref() and then pbuf_free() once processed
+		// can't do that because we have no reference to the underlying pbuf
+
+		// so for now we drop the packet
+		return 0;
+	}
+#endif
+	for (;;) {
         /* if TinyUSB isn't ready, we must signal back to lwip that there is nothing we can do */
         if (!tud_ready()) {
+#ifndef __FREERTOS
+		mutex_exit(&USB.mutex);
+#endif
             return 0;
         }
 
         /* if the network driver can accept another packet, we make it happen */
         if (tud_network_can_xmit(len)) {
             tud_network_xmit((void*)const_cast<uint8_t*>(buf), len);
+#ifndef __FREERTOS
+		mutex_exit(&USB.mutex);
+#endif
             return len;
         }
 
@@ -202,6 +232,9 @@ extern "C" {
         if (_ncm_ethernet_instance == nullptr) {
             return false;
         }
+		ncmethernet_packet_t p;
+        p.src = src;
+        p.size = size;
 #ifdef __FREERTOS
         // we get called as part of tud_task() from somewhere
         // might be in freertosUSBTask(), might be in SerialUSB stuff, delay(), or something else
@@ -223,12 +256,12 @@ extern "C" {
         // if answer packets are generated hey end up in sendFrame trying to get __get_freertos_mutex_for_ptr(&USB.mutex)
         // but thats already held by this task which is blocked. thus deadlock
 
-        // a transmit queue could solve this, but that is inefficient as the pbuf pointer sendFrame gets may be freed
-        // or reused after exiting sendFrame(). so we would have to memcpy
-        // furthermore, dropping frames in sendFrame() is inefficient, as we would waste the cpu time that created the packet
+        // a transmit queue could solve this. we would need to call pbuf_ref() to tell lwip that the pbuf is still in use
+		// so it doesn't get freed or reused after exiting sendFrame(). then pbuf_free().
+        // however, a full transmit queue would cause dropped frames which would waste the cpu time that created the packet
 
         // Instead, we use a receive queue. dropped packets have barely been processed, so it is more efficient with cpu time
-        // sendFrame() will still try to get __get_freertos_mutex_for_ptr(&USB.mutex), but if that blocks lwip doesnt deadlock.
+        // sendFrame() will still try to get __get_freertos_mutex_for_ptr(&USB.mutex), but if that blocks lwip the system wont deadlock.
         // Thats because this task can keep enqueueing packets to the receive queue without waiting for lwip.
         // It will be finished eventually and drop __get_freertos_mutex_for_ptr(&USB.mutex).
         // That will unblock lwip and allow it to send the answers.
@@ -252,9 +285,6 @@ extern "C" {
         // but thats a bunch of hassle just for this specific use case and one extra queue isn't that expensive
 
 
-        ncmethernet_packet_t p;
-        p.src = src;
-        p.size = size;
         // enqueue packet to recv queue without waiting for a response from lwip task
         // lwip task may have same or lower priority than us
         // so we allow ourselves to be blocked for a small amount of time to give lwip time to process the packets
@@ -282,10 +312,15 @@ extern "C" {
 		_ncm_ethernet_instance->packetReceivedIRQWorker(_ncm_ethernet_instance);
 
 #else
-        critical_section_enter_blocking(&_ncm_ethernet_instance->_recv_critical_section);
-        _ncm_ethernet_instance->_recv_pkg.src = src;
-        _ncm_ethernet_instance->_recv_pkg.size = size;
-        critical_section_exit(&_ncm_ethernet_instance->_recv_critical_section);
+		// we may or may not be in irq context, as tud_task() is called by usbTaskIRQ but also plenty of libraries
+		// we should be holding &USB.mutex
+		// but not the lwip mutex
+		// we must not call that as it may block. risk of deadlock when we are in IRQ context
+
+		if(!queue_try_add(&_ncm_ethernet_instance->_recv_queue, &p)) {
+			// queue full, drop packet
+			return false;
+		}
 
         async_context_set_work_pending(&_ncm_ethernet_instance->_async_context.core, &_ncm_ethernet_instance->_recv_irq_worker);
 #endif

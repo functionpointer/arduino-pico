@@ -22,16 +22,26 @@
 
 #include <stdint.h>
 #include <Arduino.h>
-#include "pico/util/queue.h"
 #include <SPI.h>
 #include <LwipEthernet.h>
 #include <LwipIntfDev.h>
 
+#ifdef __FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "freertos/freertos-lwip.h"
+#else
+#include "pico/util/queue.h"
 #include <pico/async_context_threadsafe_background.h>
-#include <pico/critical_section.h>
+#endif
 
 #ifndef NCMETHERNET_RECV_QUEUE_LENGTH
 #define NCMETHERNET_RECV_QUEUE_LENGTH 4
+#endif
+
+#ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
+// only used when not using FreeRTOS
+#define NCMETHERNET_XMIT_QUEUE_LENGTH 4
 #endif
 
 extern "C" {
@@ -89,12 +99,13 @@ public:
 
     virtual void packetReceivedIRQWorker(NCMEthernet *instance) {};
 
-    async_context_threadsafe_background_t _async_context;
-    async_when_pending_worker_t _recv_irq_worker;
-
-    critical_section_t _recv_critical_section;
 #ifdef __FREERTOS
 	QueueHandle_t _recv_queue;
+#else
+	queue_t _recv_queue;
+
+	async_context_threadsafe_background_t _async_context;
+    async_when_pending_worker_t _recv_irq_worker;
 #endif
 protected:
     netif *_netif;
