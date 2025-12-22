@@ -51,18 +51,11 @@ extern "C" {
     } ncmethernet_packet_t;
 }
 
-/**
-    incoming packet flow:
-    tinyUSB calls tud_network_recv_cb
-    that stores the packet in _ncmethernet_pkg and sets _ncm_ethernet_recv_irq_worker pending
-    _ncm_ethernet_recv_irq_worker, in different execution context, calls _recv_irq_work
-    _recv_irq_work uses _ncm_ethernet_instance to call packetReceivedIRQWorker
-    in NCMEthernetlwIP packetReceivedIRQWorker is overridden to call LwipIntfDev::_irq()
-    LwipIntfDev::_irq() calls readFrameSize() and readFrameData() and _netif.input
+class NCMEthernet;
 
-    outgoing packet flow:
-    LwipIntfDev calls sendFrame()
-*/
+extern "C" {
+    extern NCMEthernet *_ncm_ethernet_instance;
+}
 
 class NCMEthernet {
 public:
@@ -73,7 +66,7 @@ public:
     bool begin(const uint8_t *address, netif *netif);
     void end();
 
-    uint16_t sendFrame(const uint8_t *data, uint16_t datalen);
+    uint16_t sendFrame(struct pbuf *pbuf);
 
     uint16_t readFrameSize();
 
@@ -97,15 +90,15 @@ public:
 
     void usbInterfaceCB(int itf, uint8_t *dst, int len);
 
-    virtual void packetReceivedIRQWorker(NCMEthernet *instance) {};
-
 #ifdef __FREERTOS
 	QueueHandle_t _recv_queue;
 #else
 	queue_t _recv_queue;
+	queue_t _xmit_queue;
 
-	async_context_threadsafe_background_t _async_context;
     async_when_pending_worker_t _recv_irq_worker;
+	async_at_time_worker_t _xmit_irq_worker;
+	static void _try_process_xmit_queue(async_context_t *context, async_at_time_worker_t *worker);
 #endif
 protected:
     netif *_netif;
@@ -120,16 +113,6 @@ protected:
     static void _usb_interface_cb(int itf, uint8_t *dst, int len, void *param) {
         ((NCMEthernet *)param)->usbInterfaceCB(itf, dst, len);
     }
-    static void _recv_irq_work(async_context_t *context, async_when_pending_worker_t *worker) {
-        NCMEthernet *d = static_cast<NCMEthernet*>(worker->user_data);
-        d->packetReceivedIRQWorker(d);
-    }
-
 
 };
-
-extern "C" {
-    extern NCMEthernet *_ncm_ethernet_instance;
-}
-
 #endif  // NCM_ETHERNET_H
