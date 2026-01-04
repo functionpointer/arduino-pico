@@ -21,6 +21,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <USB.h>
 #include <pico/cyw43_arch.h>
 #include <lwip/pbuf.h>
 #include <lwip/udp.h>
@@ -49,9 +50,13 @@ extern volatile bool __needsIRQEN;
 
 // Under Non-OS mode, we do need to lock the context because the threadsafe IRQ could come in
 
+extern volatile long last_leave;
+extern volatile int too_often_count;
+
 class LWIPMutex {
 public:
     LWIPMutex() {
+		debug_put(LWIP_MUTEX, true);
 #if !defined(__FREERTOS)
         __inLWIP++;
         if (ethernet_arch_lwip_begin) {
@@ -59,6 +64,16 @@ public:
         } else {
             recursive_mutex_enter_blocking(&__lwipMutex);
         }
+		if(micros() - last_leave < 20) {
+			too_often_count++;
+		} else {
+			too_often_count=0;
+		}
+		if (too_often_count >= 25) {
+			debug_put(LWIP_MUTEX_TOO_OFTEN, true);
+		} else {
+			debug_put(LWIP_MUTEX_TOO_OFTEN, false);
+		}
 #endif
     }
 
@@ -74,6 +89,13 @@ public:
             __needsIRQEN = false;
             ethernet_arch_lwip_gpio_unmask();
         }
+
+		last_leave = micros();
+		if(!__inLWIP) {
+			debug_put(LWIP_MUTEX, false);
+			debug_put(LWIP_MUTEX_TOO_OFTEN, false);
+		}
+
 #endif
     }
 };

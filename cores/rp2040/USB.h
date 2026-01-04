@@ -25,6 +25,32 @@
 #include <pico/mutex.h>
 
 #ifdef __cplusplus
+typedef struct usb_stats_t {
+    int usb_irq_called = 0;
+    int usb_mutex_blocked = 0;
+} usb_stats_t;
+extern volatile usb_stats_t usb_stats;
+
+enum DBG_PIN_REASON {
+    USB_IRQ = 0,
+    USB_NCM_TRY_PROCESS = 1,
+    LWIP_NCM_RECV_IRQ = 2,
+    LWIP_ETH_POLL = 3,
+    NCM_TUD_NETWORK_RECV_CB = 4,
+	NCM_RECV_IRQ_PENDING,
+    LWIP_MUTEX,
+	LWIP_MUTEX_TOO_OFTEN,
+	LWIP_POLL_PENDING,
+	LWIP_NEXT_TIMEOUT_AT_TIME_WORKER,
+    CLIENT_CONNECT,
+    CLIENT_PRINTLN,
+    CLIENT_AVAILABLE,
+    CLIENT_STOP,
+	CLIENT_READ,
+
+};
+
+void debug_put(DBG_PIN_REASON reason, bool value);
 
 class USBClass {
 public:

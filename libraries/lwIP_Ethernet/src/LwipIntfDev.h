@@ -25,7 +25,7 @@
 
 // TODO:
 // unchain pbufs
-
+#include <USB.h> // for debug
 #include <netif/ethernet.h>
 #include <lwip/init.h>
 #include <lwip/netif.h>
@@ -484,9 +484,11 @@ void LwipIntfDev<RawDev>::end() {
 template<class RawDev>
 void LwipIntfDev<RawDev>::_lwipCallback(void *param) {
     LwipIntfDev *d = static_cast<LwipIntfDev*>(param);
+    debug_put(LWIP_NCM_RECV_IRQ, true);
     d->handlePackets();
     sys_check_timeouts();
     ethernet_arch_lwip_gpio_unmask();
+    debug_put(LWIP_NCM_RECV_IRQ, false);
 }
 
 template<class RawDev>
@@ -520,7 +522,7 @@ err_t LwipIntfDev<RawDev>::linkoutput_s(netif* netif, struct pbuf* pbuf) {
     ethernet_arch_lwip_begin();
 #endif
 
-    uint16_t len = lid->sendFrame((const uint8_t*)pbuf->payload, pbuf->len);
+    uint16_t len = lid->sendFrame(pbuf);
 
 #ifdef __FREERTOS
     xSemaphoreGive(lid->_hwMutex);

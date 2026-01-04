@@ -43,9 +43,51 @@
 #endif
 
 USBClass USB;
+volatile usb_stats_t usb_stats;
+void debug_put(DBG_PIN_REASON reason, bool value) {
+	int pin = 0;
+	switch(reason) {
+		case USB_IRQ:
+			break;
+		case USB_NCM_TRY_PROCESS:
+			break;
+		case LWIP_NCM_RECV_IRQ:
+            pin = 20; // BLUE
+			break;
+		case LWIP_ETH_POLL:
+			break;
+		case NCM_TUD_NETWORK_RECV_CB:
+            pin = 18; //YELLOW
+            break;
+		case LWIP_MUTEX:
+            pin = 21; // GREEN
+			break;
+    	case CLIENT_CONNECT:
+			break;
+		case CLIENT_READ:
+			break;
+    	case CLIENT_PRINTLN:
+			break;
+    	case CLIENT_AVAILABLE:
+			break;
+    	case CLIENT_STOP:
+			break;
+		case NCM_RECV_IRQ_PENDING:
+			pin = 19; // MAGENTA
+			break;
+		case LWIP_MUTEX_TOO_OFTEN:
+			break;
+		case LWIP_NEXT_TIMEOUT_AT_TIME_WORKER:
+			break;
+		case LWIP_POLL_PENDING:
+			break;
+	}
+	if(pin == 0) return;
+	gpio_put(pin, value);
+}
 
 // USB processing will be a periodic timer task
-#define USB_TASK_INTERVAL 1000
+#define USB_TASK_INTERVAL 500
 
 #ifndef USBD_VID
 #define USBD_VID (0x2E8A) // Raspberry Pi
@@ -433,9 +475,14 @@ void USBClass::usbIRQ() {
     // in this file which will do a tud_task itself, so we'll just do nothing
     // until the next tick; we won't starve
     if (mutex_try_enter(&USB.mutex, nullptr)) {
+		usb_stats.usb_irq_called++;
+		debug_put(USB_IRQ, true);
         tud_task();
         mutex_exit(&USB.mutex);
-    }
+		debug_put(USB_IRQ, false);
+    } else {
+		usb_stats.usb_mutex_blocked++;
+	}
 }
 
 int64_t USBClass::timerTask(__unused alarm_id_t id, __unused void *user_data) {

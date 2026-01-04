@@ -36,12 +36,12 @@
 #endif
 
 #ifndef NCMETHERNET_RECV_QUEUE_LENGTH
-#define NCMETHERNET_RECV_QUEUE_LENGTH 4
+#define NCMETHERNET_RECV_QUEUE_LENGTH 12
 #endif
 
 #ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
 // only used when not using FreeRTOS
-#define NCMETHERNET_XMIT_QUEUE_LENGTH 4
+#define NCMETHERNET_XMIT_QUEUE_LENGTH 12
 #endif
 
 extern "C" {
@@ -51,6 +51,19 @@ extern "C" {
     } ncmethernet_packet_t;
 }
 
+typedef struct eth_stats_t {
+	int xmit_queue_full = 0;
+	int xmit_enqueued = 0;
+	int xmit_usb_mutex_blocked = 0;
+	int xmit_tud_not_ready = 0;
+	int xmit_dequeued = 0;
+
+	int recv_queue_full = 0;
+	int recv_enqueued = 0;
+	int recv_dequeued = 0;
+	int recv_discarded = 0;
+} eth_stats_t;
+extern volatile eth_stats_t eth_stats;
 class NCMEthernet;
 
 extern "C" {
