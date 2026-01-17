@@ -55,6 +55,11 @@ bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
 	// fetches packets from _xmit_queue and sends them using tud_network_xmit()
 	this->_xmit_irq_worker.user_data = this;
 	this->_xmit_irq_worker.do_work = &NCMEthernet::_try_process_xmit_queue;
+
+	this->_tud_recv_renew_worker.user_data = this;
+	this->_tud_recv_renew_worker.do_work = &NCMEthernet::_try_tud_recv_renew;
+
+	critical_section_init(&this->pending_counter_critical_section);
 #endif
 
 	if (_ncm_ethernet_instance != nullptr) {
@@ -160,8 +165,11 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 #else
 	// do we need &USB.mutex for recv_renew?
 	// we __cannot__ block because we are likely in IRQ context
+	critical_section_enter_blocking(&this->pending_counter_critical_section);
+	this->pending_tud_recv_renew_count++;
+	critical_section_exit(&this->pending_counter_critical_section);
+	this->_try_tud_recv_renew(nullptr, nullptr);
 #endif
-    tud_network_recv_renew();
 
     return p.size;
 
@@ -171,11 +179,38 @@ void NCMEthernet::discardFrame(uint16_t ign) {
 	ncmethernet_packet_t p;
 #ifdef __FREERTOS
     xQueueReceive(this->_recv_queue, &p, 0);
+	tud_network_recv_renew(); // do we need usb mutex for this?
 #else
 	queue_try_remove(&this->_recv_queue, NULL);
+	critical_section_enter_blocking(&this->pending_counter_critical_section);
+	this->pending_tud_recv_renew_count++;
+	critical_section_exit(&this->pending_counter_critical_section);
+	this->_try_tud_recv_renew(nullptr, nullptr);
 #endif
-	eth_stats.recv_discarded++;
-	tud_network_recv_renew();
+}
+
+void NCMEthernet::_try_tud_recv_renew(__unused async_context_t *context, __unused async_at_time_worker_t *worker) {
+	NCMEthernet *me = _ncm_ethernet_instance;
+
+	if (!mutex_try_enter(&USB.mutex, nullptr)) {
+		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_tud_recv_renew_worker, 1);
+		return;
+	}
+	while(true) {
+		critical_section_enter_blocking(&me->pending_counter_critical_section);
+		if(me->pending_tud_recv_renew_count<=0) {
+			critical_section_exit(&me->pending_counter_critical_section);
+			mutex_exit(&USB.mutex);
+			return;
+		} else {
+			me->pending_tud_recv_renew_count--;
+			critical_section_exit(&me->pending_counter_critical_section);
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_NORMAL, true);
+    		tud_network_recv_renew();
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_NORMAL, false);
+		}
+	}
+
 }
 
 #ifdef __FREERTOS
@@ -221,7 +256,7 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 		xmitpkgcount = 0;
 	}*/
 	// tell lwip we are still using it
-	pbuf_ref(p);
+	// pbuf_ref(p);
 
 	// USB mutex is probably free, so we call _try_process_xmit_queue
 	// it tries to get the mutex and will send send all packets fromt the queue
@@ -241,7 +276,10 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 	if (!mutex_try_enter(&USB.mutex, nullptr)) {
 		// couldn't get USB mutex, try again later
 		eth_stats.xmit_usb_mutex_blocked++;
-		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
+		//async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
+		while(!queue_is_empty(&me->_xmit_queue)) {
+			queue_try_remove(&me->_xmit_queue, nullptr);
+		}
 		return;
 	}
 	debug_put(USB_NCM_TRY_PROCESS, true);
@@ -260,7 +298,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 			if (!queue_try_remove(&me->_xmit_queue, nullptr)) {
 				panic("couldn't remove packet from queue after transmitting");
 			}
-			pbuf_free(p);
+			// pbuf_free(p);
 		}
 		tud_task();
 	}
@@ -268,7 +306,10 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 	debug_put(USB_NCM_TRY_PROCESS, false);
 	if (!queue_is_empty(&me->_xmit_queue)) {
 		// queue not empty, try again later
-		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
+		//async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
+		while(!queue_is_empty(&me->_xmit_queue)) {
+			queue_try_remove(&me->_xmit_queue, nullptr);
+		}
 	}
 }
 #endif
@@ -381,6 +422,9 @@ extern "C" {
 			eth_stats.recv_enqueued++;
 		} else {
 			eth_stats.recv_queue_full++;
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL, true);
+			tud_network_recv_renew(); // do it here as the real call will never come
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL, false);
 		}
 
 		debug_put(NCM_RECV_IRQ_PENDING, true);

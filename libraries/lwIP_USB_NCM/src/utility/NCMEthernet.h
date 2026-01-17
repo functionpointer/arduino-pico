@@ -112,6 +112,11 @@ public:
     async_when_pending_worker_t _recv_irq_worker;
 	async_at_time_worker_t _xmit_irq_worker;
 	static void _try_process_xmit_queue(async_context_t *context, async_at_time_worker_t *worker);
+
+	async_at_time_worker_t _tud_recv_renew_worker;
+	volatile int32_t pending_tud_recv_renew_count=0;
+	critical_section_t pending_counter_critical_section;
+	static void _try_tud_recv_renew(async_context_t *context, async_at_time_worker_t *worker);
 #endif
 protected:
     netif *_netif;

@@ -28,6 +28,10 @@ void setup() {
     pinMode(19, OUTPUT);
     pinMode(20, OUTPUT);
     pinMode(21, OUTPUT);
+    pinMode(15, OUTPUT);
+    pinMode(14, OUTPUT);
+    pinMode(13, OUTPUT);
+    pinMode(12, OUTPUT);
 
     Serial1.end();
     Serial1.setTX(16);

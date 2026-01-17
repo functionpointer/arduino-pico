@@ -62,6 +62,8 @@ bool __ethernetContextInitted = false;
 // Theoretically support multiple interfaces
 static std::map<int, std::function<void(void)>> _handlePacketList;
 
+volatile int exception_on_outer = -1;
+
 void ethernet_arch_lwip_begin() {
     __startEthernetContext();
 #ifdef __FREERTOS
@@ -74,6 +76,16 @@ void ethernet_arch_lwip_begin() {
     }
 #endif
     async_context_acquire_lock_blocking(_context);
+    /*uint gce = __get_current_exception();
+    if (lwip_ethernet_async_context.lock_mutex.enter_count == 1) {
+        exception_on_outer = gce;
+	} else if(gce == 46 && lwip_ethernet_async_context.lock_mutex.enter_count == 2) {
+		exception_on_outer = gce;
+    } else {
+        if (exception_on_outer != gce) {
+            panic("mutex acquired by unexpected %d", gce);
+        }
+    }*/
 #endif
 }
 
@@ -87,6 +99,11 @@ void ethernet_arch_lwip_end() {
         return;
     }
 #endif
+    /*if (lwip_ethernet_async_context.lock_mutex.enter_count == 1) {
+		exception_on_outer = -1;
+	} else if(__get_current_exception() == 46 && lwip_ethernet_async_context.lock_mutex.enter_count == 2) {
+		exception_on_outer = -1;
+	}*/
     async_context_release_lock(_context);
 #endif
 }
@@ -305,6 +322,10 @@ extern "C" {
 
 void lwip_assert_core_locked() {
 	async_context_lock_check(__getEthernetContext());
+
+    /*if (exception_on_outer != __get_current_exception()) {
+        panic("in unexpected context!");
+    }*/
 }
 
 void lwipPollingPeriod(int ms) {

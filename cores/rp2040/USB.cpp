@@ -44,46 +44,40 @@
 
 USBClass USB;
 volatile usb_stats_t usb_stats;
+
 void debug_put(DBG_PIN_REASON reason, bool value) {
 	int pin = 0;
-	switch(reason) {
-		case USB_IRQ:
+	for(int i=0;i<DEBUG_CHANNEL_MAP_SIZE;i++) {
+		if (debug_chan_map[i]>>reason & 0x1) {
+			pin = debug_chan_pins[i];
 			break;
-		case USB_NCM_TRY_PROCESS:
-			break;
-		case LWIP_NCM_RECV_IRQ:
-            pin = 20; // BLUE
-			break;
-		case LWIP_ETH_POLL:
-			break;
-		case NCM_TUD_NETWORK_RECV_CB:
-            pin = 18; //YELLOW
-            break;
-		case LWIP_MUTEX:
-            pin = 21; // GREEN
-			break;
-    	case CLIENT_CONNECT:
-			break;
-		case CLIENT_READ:
-			break;
-    	case CLIENT_PRINTLN:
-			break;
-    	case CLIENT_AVAILABLE:
-			break;
-    	case CLIENT_STOP:
-			break;
-		case NCM_RECV_IRQ_PENDING:
-			pin = 19; // MAGENTA
-			break;
-		case LWIP_MUTEX_TOO_OFTEN:
-			break;
-		case LWIP_NEXT_TIMEOUT_AT_TIME_WORKER:
-			break;
-		case LWIP_POLL_PENDING:
-			break;
+		}
 	}
 	if(pin == 0) return;
 	gpio_put(pin, value);
+}
+
+void debug_put_gca(DBG_PIN_REASON reason, bool value) {
+    uint gca = __get_current_exception();
+    if(gca==0) {
+        debug_put(reason, value);
+    } else if(gca==46) {
+        debug_put((DBG_PIN_REASON)(((uint64_t)reason)+1), value);
+    } else {
+        panic("unexpected gca");
+    }
+}
+
+void debug_toggle(DBG_PIN_REASON reason) {
+	int pin = 0;
+	for(int i=0;i<DEBUG_CHANNEL_MAP_SIZE;i++) {
+		if (debug_chan_map[i]>>reason & 0x1) {
+			pin = debug_chan_pins[i];
+			break;
+		}
+	}
+	if(pin == 0) return;
+	gpio_xor_mask(1u << pin);
 }
 
 // USB processing will be a periodic timer task

@@ -25,11 +25,8 @@
 #include <pico/mutex.h>
 
 #ifdef __cplusplus
-typedef struct usb_stats_t {
-    int usb_irq_called = 0;
-    int usb_mutex_blocked = 0;
-} usb_stats_t;
-extern volatile usb_stats_t usb_stats;
+extern "C" {
+#endif
 
 enum DBG_PIN_REASON {
     USB_IRQ = 0,
@@ -38,20 +35,88 @@ enum DBG_PIN_REASON {
     LWIP_ETH_POLL = 3,
     NCM_TUD_NETWORK_RECV_CB = 4,
 	NCM_RECV_IRQ_PENDING,
+    
     LWIP_MUTEX,
 	LWIP_MUTEX_TOO_OFTEN,
 	LWIP_POLL_PENDING,
 	LWIP_NEXT_TIMEOUT_AT_TIME_WORKER,
+    
+    LWIP_TCP_SLOWTMR,
+    LWIP_TCP_SLOWTMR2,
+    LWIP_TCP_FASTTMR,
+    LWIP_TCP_FASTTMR2,
+    LWIP_TCP_NETIF_IP_ADDR_CHANGED_PCBLIST,
+    LWIP_TCP_NETIF_IP_ADDR_CHANGED_PCBLIST2,
+    LWIP_TCP_INPUT,
+    LWIP_TCP_INPUT2,
+    LWIP_PBUF_FREE_OOSEQ,
+    LWIP_PBUF_FREE_OOSEQ2,
+    LWIP_TCP_INPUT_DELAYED_CLOSE,
+    LWIP_TCP_INPUT_DELAYED_CLOSE2,
+    LWIP_TCP_REMOVE,
+    LWIP_TCP_REMOVE2,
+	LWIP_MEM_TRIM,
+	LWIP_ALIVE,
+
     CLIENT_CONNECT,
     CLIENT_PRINTLN,
     CLIENT_AVAILABLE,
     CLIENT_STOP,
 	CLIENT_READ,
-
+	NCM_TUD_NETWORK_RECV_RENEW_NORMAL,
+	NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL,
+	NCM_TUD_NETWORK_RECV_RENEW_DISCARD,
+	ETHERNET_HANDLEPACKETS,
+    ETHERNET_READFRAMESIZE,
+    ETHERNET_PBUF_ALLOC,
+    ETHERNET_PBUF_FREE,
+    ETHERNET_DISCARDFRAME,
+    ETHERNET_READFRAMEDATA,
+    ETHERNET_NETIF_INPUT,
+	ETHERNET_HANDLEPACKETS_2ND_PACKET,
 };
 
-void debug_put(DBG_PIN_REASON reason, bool value);
+void debug_put(enum DBG_PIN_REASON reason, bool value);
+void debug_put_gca(enum DBG_PIN_REASON reason, bool value);
+void debug_toggle(enum DBG_PIN_REASON reason);
 
+#ifdef __cplusplus
+}
+#endif
+
+#ifdef __cplusplus
+
+/*d0 gray*/  
+/*d1 brown*/ 
+/*d2 red*/   
+/*d3 orange*/
+/*d4 yellow*/
+/*d5 green */
+/*d6 blue*/  
+/*d7 purple*/
+#define DEBUG_CHANNEL_MAP_SIZE 8
+#define BIT(x) (1ull<<x)
+inline constexpr uint64_t debug_chan_map[DEBUG_CHANNEL_MAP_SIZE] = {
+         BIT(NCM_TUD_NETWORK_RECV_CB),
+		 BIT(ETHERNET_HANDLEPACKETS),
+         BIT(LWIP_ALIVE),
+		 BIT(LWIP_MUTEX),
+         BIT(ETHERNET_READFRAMESIZE)|BIT(ETHERNET_READFRAMEDATA),
+         BIT(LWIP_MEM_TRIM),
+	     BIT(USB_IRQ),
+};
+         //(1<<CLIENT_CONNECT)|(1<<CLIENT_PRINTLN)|(1<<CLIENT_AVAILABLE)|(1<<CLIENT_STOP)|(1<<CLIENT_READ),
+         //         BIT(NCM_TUD_NETWORK_RECV_RENEW_NORMAL)|BIT(NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL)|BIT(NCM_TUD_NETWORK_RECV_RENEW_DISCARD),
+//BIT(LWIP_TCP_SLOWTMR)|BIT(LWIP_TCP_FASTTMR)|BIT(LWIP_TCP_NETIF_IP_ADDR_CHANGED_PCBLIST)|BIT(LWIP_TCP_INPUT)|BIT(LWIP_PBUF_FREE_OOSEQ)|BIT(LWIP_TCP_INPUT_DELAYED_CLOSE)|BIT(LWIP_TCP_REMOVE),
+         //BIT(LWIP_TCP_SLOWTMR2)|BIT(LWIP_TCP_FASTTMR2)|BIT(LWIP_TCP_NETIF_IP_ADDR_CHANGED_PCBLIST2)|BIT(LWIP_TCP_INPUT2)|BIT(LWIP_PBUF_FREE_OOSEQ2)|BIT(LWIP_TCP_INPUT_DELAYED_CLOSE2)|BIT(LWIP_TCP_REMOVE2),
+inline constexpr int debug_chan_pins[DEBUG_CHANNEL_MAP_SIZE] = {
+		18, 19, 20, 21, 15, 14, 13, 12
+};
+typedef struct usb_stats_t {
+    int usb_irq_called = 0;
+    int usb_mutex_blocked = 0;
+} usb_stats_t;
+extern volatile usb_stats_t usb_stats;
 class USBClass {
 public:
     USBClass() { }

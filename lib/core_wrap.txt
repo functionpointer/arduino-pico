@@ -39,6 +39,9 @@
 -Wl,--wrap=tcp_setprio
 -Wl,--wrap=tcp_backlog_delayed
 -Wl,--wrap=tcp_backlog_accepted
+-Wl,--wrap=tcp_set_flags
+-Wl,--wrap=tcp_clear_flags
+-Wl,--wrap=tcp_is_flag_set
 
 -Wl,--wrap=udp_new
 -Wl,--wrap=udp_new_ip_type
