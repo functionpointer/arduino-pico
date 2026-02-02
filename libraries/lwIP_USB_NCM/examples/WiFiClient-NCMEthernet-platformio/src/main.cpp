@@ -208,7 +208,7 @@ void loop() {
         }
         debug_put(CLIENT_AVAILABLE, false);
 
-        if (millis() - timeout > 5000) {
+        if (millis() - timeout > 500) {
             SER.println(">>> Client Timeout !");
             debug_put(CLIENT_STOP, true);
             client.stop();

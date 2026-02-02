@@ -76,7 +76,10 @@ void ethernet_arch_lwip_begin() {
     }
 #endif
     async_context_acquire_lock_blocking(_context);
-    /*uint gce = __get_current_exception();
+    uint gce = __get_current_exception();
+	if (gce != 0 && gce != 46) {
+		panic("mutex acquired by unexpected %d", gce);
+	}
     if (lwip_ethernet_async_context.lock_mutex.enter_count == 1) {
         exception_on_outer = gce;
 	} else if(gce == 46 && lwip_ethernet_async_context.lock_mutex.enter_count == 2) {
@@ -85,7 +88,7 @@ void ethernet_arch_lwip_begin() {
         if (exception_on_outer != gce) {
             panic("mutex acquired by unexpected %d", gce);
         }
-    }*/
+    }
 #endif
 }
 
@@ -326,6 +329,17 @@ void lwip_assert_core_locked() {
     /*if (exception_on_outer != __get_current_exception()) {
         panic("in unexpected context!");
     }*/
+}
+volatile int sys_mutex_current_exception = -1;
+void lwip_sys_mutex_lock() {
+	if (sys_mutex_current_exception != -1) {
+		__breakpoint();
+	}
+	sys_mutex_current_exception = __get_current_exception();
+}
+
+void lwip_sys_mutex_unlock() {
+	sys_mutex_current_exception = -1;
 }
 
 void lwipPollingPeriod(int ms) {

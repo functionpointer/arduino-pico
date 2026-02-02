@@ -141,6 +141,7 @@ uint16_t NCMEthernet::readFrameSize() {
 		return 0;
 	}
 #endif
+	tcp_check_lists_ok();
 	return p.size;
 }
 
@@ -155,6 +156,9 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 		return 0;
 	}
 #endif
+	if (framesize != p.size) {
+		__breakpoint();
+	}
     memcpy(buffer, (const void*)p.src, min(framesize, p.size));
 	eth_stats.recv_dequeued++;
 
@@ -168,7 +172,9 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 	critical_section_enter_blocking(&this->pending_counter_critical_section);
 	this->pending_tud_recv_renew_count++;
 	critical_section_exit(&this->pending_counter_critical_section);
+	tcp_check_lists_ok();
 	this->_try_tud_recv_renew(nullptr, nullptr);
+	tcp_check_lists_ok();
 #endif
 
     return p.size;
@@ -185,7 +191,9 @@ void NCMEthernet::discardFrame(uint16_t ign) {
 	critical_section_enter_blocking(&this->pending_counter_critical_section);
 	this->pending_tud_recv_renew_count++;
 	critical_section_exit(&this->pending_counter_critical_section);
+	tcp_check_lists_ok();
 	this->_try_tud_recv_renew(nullptr, nullptr);
+	tcp_check_lists_ok();
 #endif
 }
 
@@ -240,7 +248,7 @@ volatile static int xmitpkgcount = 0;
 uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// in case of baremetal we are probably in IRQ context
 	// we should be holding lwip mutex, but not USB mutex
-
+	tcp_check_lists_ok();
 	// add packet to queue
 	if(!queue_try_add(&_ncm_ethernet_instance->_xmit_queue, &p)) {
 		// queue full, drop packet
@@ -269,6 +277,7 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __unused async_at_time_worker_t *worker) {
 	NCMEthernet *me = _ncm_ethernet_instance;
 
+	tcp_check_lists_ok();
 	if (queue_is_empty(&me->_xmit_queue)) {
 		return;
 	}
@@ -311,6 +320,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 			queue_try_remove(&me->_xmit_queue, nullptr);
 		}
 	}
+	tcp_check_lists_ok();
 }
 #endif
 

@@ -129,24 +129,32 @@ int WiFiClient::connect(const String& host, uint16_t port) {
 }
 
 int WiFiClient::connect(IPAddress ip, uint16_t port) {
+    struct tcp_pcb* old_pcb = _client->getPCB();
     if (_client) {
         stop();
         _client->unref();
         _client = nullptr;
     }
-
     tcp_pcb* pcb = tcp_new();
     if (!pcb) {
         return 0;
+    }
+    memp_mark_used(pcb);
+    tcp_check_list_not_contains(pcb);
+    if(old_pcb == pcb) {
+        __breakpoint();
     }
 
     if (_localPort > 0) {
         pcb->local_port = _localPort++;
     }
+    tcp_check_list_not_contains(pcb);
 
     _client = new ClientContext(pcb, nullptr, nullptr);
+    tcp_check_list_not_contains(pcb);
     _client->ref();
     _client->setTimeout(_timeout);
+    tcp_check_list_not_contains(pcb);
     int res = _client->connect(ip, port);
     if (res == 0) {
         _client->unref();

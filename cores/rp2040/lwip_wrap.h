@@ -74,11 +74,13 @@ public:
 		} else {
 			debug_put(LWIP_MUTEX_TOO_OFTEN, false);
 		}
+        tcp_check_lists_ok();
 #endif
     }
 
     ~LWIPMutex() {
 #if !defined(__FREERTOS)
+        tcp_check_lists_ok();
         if (ethernet_arch_lwip_end) {
             ethernet_arch_lwip_end();
         } else {

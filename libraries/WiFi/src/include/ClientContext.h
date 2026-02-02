@@ -66,11 +66,13 @@ public:
     err_t abort() {
         if (_pcb) {
             DEBUGV(":abort\r\n");
+            memp_mark_unused(_pcb);
             tcp_arg(_pcb, nullptr);
             tcp_sent(_pcb, nullptr);
             tcp_recv(_pcb, nullptr);
             tcp_err(_pcb, nullptr);
             tcp_poll(_pcb, nullptr, 0);
+            tcp_ensure_not_freed(_pcb);
             tcp_abort(_pcb);
             _pcb = nullptr;
         }
@@ -81,11 +83,44 @@ public:
         err_t err = ERR_OK;
         if (_pcb) {
             DEBUGV(":close\r\n");
+            tcp_ensure_not_freed(_pcb);
+            debug_put(CLIENTCONTEXT_CLOSE, true);
             tcp_arg(_pcb, nullptr);
             tcp_sent(_pcb, nullptr);
             tcp_recv(_pcb, nullptr);
             tcp_err(_pcb, nullptr);
             tcp_poll(_pcb, nullptr, 0);
+            tcp_ensure_not_freed(_pcb);
+            debug_put(CLIENTCONTEXT_CLOSE, false); // during this the following happend
+            // USB receives packet, enqueues it and sets worker pending
+            // low prio irq fires, acquires lock and executes handlePackets
+            // packet turns out to be a TCP RST
+            // lwip frees _pcb
+            // normally that would call _err callback, which would set _pcb=NULL. however, that callback has already been removed!
+            // so _pcb keeps pointing to the freed memory
+            // the tcp_close(_pcb) that follows is a double free -> destroys linked list inside memp.c 
+            ensure_not_marked@0x10010a84 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:173)
+            do_memp_free_pool@0x10010aac (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:430)
+            memp_free@0x10010baa (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:518)
+            tcp_free@0x10012040 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\tcp.c:247)
+            tcp_input@0x10014cec (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\tcp_in.c:455)
+            ip4_input@0x1000a7c8 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\ipv4\ip4.c:743)
+            ethernet_input@0x10017630 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\netif\ethernet.c:186)
+            __wrap_ethernet_input@0x10017f56 (c:\Users\Fubbel\git\arduino-pico\cores\rp2040\lwip_wrap.cpp:870)
+            LwipIntfDev<NCMEthernet>::handlePackets@0x100047e2 (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_Ethernet\src\LwipIntfDev.h:688)
+            LwipIntfDev<NCMEthernet>::_lwipCallback@0x100048cc (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_Ethernet\src\LwipIntfDev.h:488)
+            lwip_callback@0x10017f6c (c:\Users\Fubbel\git\arduino-pico\cores\rp2040\lwip_wrap.cpp:916)
+            NCMEthernetlwIP::_call_irq@0x10004628 (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_USB_NCM\src\NCMEthernetlwIP.cpp:30)
+            async_context_base_execute_once@0x10032882 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\src\rp2_common\pico_async_context\async_context_base.c:101)
+            process_under_lock@0x10031bdc (c:\Users\Fubbel\git\arduino-pico\pico-sdk\src\rp2_common\pico_async_context\async_context_threadsafe_background.c:257)
+            low_priority_irq_handler@0x10031ea6 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\src\rp2_common\pico_async_context\async_context_threadsafe_background.c:299)
+            <signal handler called>@0xfffffff9 (Unknown Source:0)
+            debug_put@0x10006338 (c:\Users\Fubbel\git\arduino-pico\cores\rp2040\USB.cpp:51)
+            ClientContext::close@0x10003be2 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\include\ClientContext.h:94)
+            WiFiClient::stop@0x10004244 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\WiFiClient.cpp:295)
+            WiFiClient::stop@0x100038d2 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\WiFiClient.h:89)
+            loop@0x100038d2 (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_USB_NCM\examples\WiFiClient-NCMEthernet-platformio\src\main.cpp:241)
+            memp_mark_unused(_pcb);
             err = tcp_close(_pcb);
             if (err != ERR_OK) {
                 DEBUGV(":tc err %d\r\n", (int) err);
@@ -313,6 +348,7 @@ public:
         if (!_pcb) {
             return true;
         }
+        tcp_ensure_not_freed(_pcb);
 
         int prevsndbuf = -1;
 
@@ -360,6 +396,7 @@ public:
             // CLOSED for WiFIClient::status() means nothing more can be written
             return CLOSED;
         }
+        tcp_ensure_not_freed(_pcb);
 
         return _pcb->state;
     }
@@ -368,6 +405,7 @@ public:
         if (!_pcb) {
             return 0;
         }
+        tcp_ensure_not_freed(_pcb);
         return _write_from_source(ds, dl);
     }
 
@@ -375,6 +413,7 @@ public:
         if (!_pcb) {
             return 0;
         }
+        tcp_ensure_not_freed(_pcb);
         size_t sent = 0;
         uint8_t buff[256];
         while (stream.available()) {
@@ -606,6 +645,7 @@ protected:
     }
 
     void _consume(size_t size) {
+        bool has_pcb = _pcb?true:false;
         ptrdiff_t left = _rx_buf->len - _rx_buf_offset - size;
         if (left > 0) {
             _rx_buf_offset += size;
@@ -624,7 +664,18 @@ protected:
             pbuf_free(head);
         }
         if (_pcb) {
+            tcp_ensure_not_freed(_pcb);
             tcp_recved(_pcb, size);
+            // _pcb turned out to be freed after this in one test
+            // however, _pcb was also nullptr
+            // thus nothing bad comes of it, ClientContext handles this fine
+
+            // question is: how did _pcb become nullptr?
+            // most likely explanation: _err callback
+            // tcp_ensure_not_freed(_pcb);
+        } else if(has_pcb) {
+            // got freed in the meantime?
+            // __breakpoint();
         }
     }
 
@@ -661,18 +712,23 @@ protected:
     void _error(err_t err) {
         (void) err;
         DEBUGV(":er %d 0x%08lx\r\n", (int) err, (uint32_t) _datasource);
+        debug_put(CLIENTCONTEXT_ERR_CB, true);
+        tcp_ensure_not_freed(_pcb);
+        memp_mark_unused(_pcb);
         tcp_arg(_pcb, nullptr);
         tcp_sent(_pcb, nullptr);
         tcp_recv(_pcb, nullptr);
         tcp_err(_pcb, nullptr);
         _pcb = nullptr;
         _notify_error();
+        debug_put(CLIENTCONTEXT_ERR_CB, false);
     }
 
     err_t _connected(struct tcp_pcb *pcb, err_t err) {
         (void) err;
         (void) pcb;
         assert(pcb == _pcb);
+        tcp_ensure_not_freed(_pcb);
         if (_connect_pending) {
             // resume connect
             _connect_pending = false;

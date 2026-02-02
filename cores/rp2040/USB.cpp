@@ -80,6 +80,15 @@ void debug_toggle(DBG_PIN_REASON reason) {
 	gpio_xor_mask(1u << pin);
 }
 
+volatile bool dbg_norecurse = false;
+void debug_put_norecurse(DBG_PIN_REASON reason, bool value) {
+	if(dbg_norecurse == value) {
+		__breakpoint();
+	}
+	dbg_norecurse = value;
+	debug_put(reason, value);
+}
+
 // USB processing will be a periodic timer task
 #define USB_TASK_INTERVAL 500
 
