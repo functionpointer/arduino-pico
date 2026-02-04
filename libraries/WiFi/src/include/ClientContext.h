@@ -48,6 +48,7 @@ public:
     ClientContext(tcp_pcb* pcb, discard_cb_t discard_cb, void* discard_cb_arg) :
         _pcb(pcb), _rx_buf(0), _rx_buf_offset(0), _discard_cb(discard_cb), _discard_cb_arg(discard_cb_arg), _refcnt(0), _next(0),
         _sync(::getDefaultPrivateGlobalSyncValue()) {
+        LWIPMutex m;
         tcp_setprio(_pcb, TCP_PRIO_MIN);
         tcp_arg(_pcb, this);
         tcp_recv(_pcb, &_s_recv);
@@ -64,6 +65,7 @@ public:
     }
 
     err_t abort() {
+        LWIPMutex m;
         if (_pcb) {
             DEBUGV(":abort\r\n");
             memp_mark_unused(_pcb);
@@ -80,6 +82,7 @@ public:
     }
 
     err_t close() {
+        LWIPMutex m;
         err_t err = ERR_OK;
         if (_pcb) {
             DEBUGV(":close\r\n");
@@ -99,7 +102,7 @@ public:
             // normally that would call _err callback, which would set _pcb=NULL. however, that callback has already been removed!
             // so _pcb keeps pointing to the freed memory
             // the tcp_close(_pcb) that follows is a double free -> destroys linked list inside memp.c 
-            ensure_not_marked@0x10010a84 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:173)
+            /*ensure_not_marked@0x10010a84 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:173)
             do_memp_free_pool@0x10010aac (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:430)
             memp_free@0x10010baa (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\memp.c:518)
             tcp_free@0x10012040 (c:\Users\Fubbel\git\arduino-pico\pico-sdk\lib\lwip\src\core\tcp.c:247)
@@ -119,7 +122,7 @@ public:
             ClientContext::close@0x10003be2 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\include\ClientContext.h:94)
             WiFiClient::stop@0x10004244 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\WiFiClient.cpp:295)
             WiFiClient::stop@0x100038d2 (c:\Users\Fubbel\git\arduino-pico\libraries\WiFi\src\WiFiClient.h:89)
-            loop@0x100038d2 (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_USB_NCM\examples\WiFiClient-NCMEthernet-platformio\src\main.cpp:241)
+            loop@0x100038d2 (c:\Users\Fubbel\git\arduino-pico\libraries\lwIP_USB_NCM\examples\WiFiClient-NCMEthernet-platformio\src\main.cpp:241)*/
             memp_mark_unused(_pcb);
             err = tcp_close(_pcb);
             if (err != ERR_OK) {
@@ -197,10 +200,12 @@ public:
     }
 
     size_t availableForWrite() const {
+        LWIPMutex m;
         return _pcb ? tcp_sndbuf(_pcb) : 0;
     }
 
     void setNoDelay(bool nodelay) {
+        LWIPMutex m;
         if (!_pcb) {
             return;
         }
@@ -212,6 +217,7 @@ public:
     }
 
     bool getNoDelay() const {
+        LWIPMutex m;
         if (!_pcb) {
             return false;
         }
@@ -231,6 +237,7 @@ public:
     }
 
     const ip_addr_t* getRemoteAddress() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -239,6 +246,7 @@ public:
     }
 
     uint16_t getRemotePort() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -247,6 +255,7 @@ public:
     }
 
     const ip_addr_t* getLocalAddress() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -281,6 +290,7 @@ public:
     }
 
     size_t read(char* dst, size_t size) {
+
         if (!_rx_buf) {
             return 0;
         }
@@ -344,7 +354,6 @@ public:
         // https://github.com/esp8266/Arduino/pull/3967#pullrequestreview-83451496
         // option 1 done
         // option 2 / _write_some() not necessary since _datasource is always nullptr here
-
         if (!_pcb) {
             return true;
         }
@@ -364,26 +373,29 @@ public:
                 return false;
             }
 
-            if (!_pcb) {
-                return false;
-            }
-            // force lwIP to send what can be sent
-            tcp_output(_pcb);
+            {
+                LWIPMutex m;
+                if (!_pcb) {
+                    return false;
+                }
+                // force lwIP to send what can be sent
+                tcp_output(_pcb);
 
-            int sndbuf = tcp_sndbuf(_pcb);
-            if (sndbuf != prevsndbuf) {
-                // send buffer has changed (or first iteration)
-                prevsndbuf = sndbuf;
-                // We just sent a bit, move timeout forward
-                last_sent = millis();
-            }
+                int sndbuf = tcp_sndbuf(_pcb);
+                if (sndbuf != prevsndbuf) {
+                    // send buffer has changed (or first iteration)
+                    prevsndbuf = sndbuf;
+                    // We just sent a bit, move timeout forward
+                    last_sent = millis();
+                }
 
-            // esp_yield(); // from sys or os context
+                // esp_yield(); // from sys or os context
 
-            if ((state() != ESTABLISHED) || (sndbuf == TCP_SND_BUF)) {
-                // peer has closed or all bytes are sent and acked
-                // ((TCP_SND_BUF-sndbuf) is the amount of un-acked bytes)
-                break;
+                if ((state() != ESTABLISHED) || (sndbuf == TCP_SND_BUF)) {
+                    // peer has closed or all bytes are sent and acked
+                    // ((TCP_SND_BUF-sndbuf) is the amount of un-acked bytes)
+                    break;
+                }
             }
         }
 
@@ -392,6 +404,7 @@ public:
     }
 
     uint8_t state() const {
+        LWIPMutex m;
         if (!_pcb || _pcb->state == CLOSE_WAIT || _pcb->state == CLOSING) {
             // CLOSED for WiFIClient::status() means nothing more can be written
             return CLOSED;
@@ -402,14 +415,15 @@ public:
     }
 
     size_t write(const char* ds, const size_t dl) {
+        // no LWIPMutex here, _write_from_source contains delay()
         if (!_pcb) {
             return 0;
         }
-        tcp_ensure_not_freed(_pcb);
         return _write_from_source(ds, dl);
     }
 
     size_t write(Stream& stream) {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -547,6 +561,7 @@ protected:
     }
 
     bool _write_some() {
+        LWIPMutex m;
         if (!_datasource || !_pcb) {
             return false;
         }
@@ -645,6 +660,7 @@ protected:
     }
 
     void _consume(size_t size) {
+        LWIPMutex m;
         bool has_pcb = _pcb?true:false;
         ptrdiff_t left = _rx_buf->len - _rx_buf_offset - size;
         if (left > 0) {
