@@ -12,7 +12,7 @@ bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
     if(!LwipIntfDev<NCMEthernet>::begin(macAddress, mtu)) {
 		return false;
 	}
-	// __removeEthernetPacketHandler(this->_phID); // this is added bc LwipIntfDev thinks we must be polled
+	__removeEthernetPacketHandler(this->_phID); // this is added bc LwipIntfDev thinks we must be polled
 	// but we actually do interrupts. polling us anyway is inefficient at best, deadlock causing at worst
 
 #ifndef __FREERTOS

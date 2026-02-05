@@ -188,12 +188,13 @@ void NCMEthernet::discardFrame(uint16_t ign) {
 	tud_network_recv_renew(); // do we need usb mutex for this?
 #else
 	queue_try_remove(&this->_recv_queue, NULL);
+
 	critical_section_enter_blocking(&this->pending_counter_critical_section);
 	this->pending_tud_recv_renew_count++;
 	critical_section_exit(&this->pending_counter_critical_section);
-	tcp_check_lists_ok();
+
+	//tcp_check_lists_ok();
 	this->_try_tud_recv_renew(nullptr, nullptr);
-	tcp_check_lists_ok();
 #endif
 }
 
@@ -248,11 +249,10 @@ volatile static int xmitpkgcount = 0;
 uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// in case of baremetal we are probably in IRQ context
 	// we should be holding lwip mutex, but not USB mutex
-	tcp_check_lists_ok();
+	// tcp_check_lists_ok();
 	// add packet to queue
 	if(!queue_try_add(&_ncm_ethernet_instance->_xmit_queue, &p)) {
 		// queue full, drop packet
-		// Serial1.println("tx queue full");
 		eth_stats.xmit_queue_full++;
 		NCMEthernet::_try_process_xmit_queue(nullptr, nullptr);
 		return 0;
@@ -264,7 +264,7 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 		xmitpkgcount = 0;
 	}*/
 	// tell lwip we are still using it
-	// pbuf_ref(p);
+	pbuf_ref(p);
 
 	// USB mutex is probably free, so we call _try_process_xmit_queue
 	// it tries to get the mutex and will send send all packets fromt the queue
@@ -285,10 +285,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 	if (!mutex_try_enter(&USB.mutex, nullptr)) {
 		// couldn't get USB mutex, try again later
 		eth_stats.xmit_usb_mutex_blocked++;
-		//async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
-		while(!queue_is_empty(&me->_xmit_queue)) {
-			queue_try_remove(&me->_xmit_queue, nullptr);
-		}
+		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
 		return;
 	}
 	debug_put(USB_NCM_TRY_PROCESS, true);
@@ -307,7 +304,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 			if (!queue_try_remove(&me->_xmit_queue, nullptr)) {
 				panic("couldn't remove packet from queue after transmitting");
 			}
-			// pbuf_free(p);
+			pbuf_free(p);
 		}
 		tud_task();
 	}
@@ -315,10 +312,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 	debug_put(USB_NCM_TRY_PROCESS, false);
 	if (!queue_is_empty(&me->_xmit_queue)) {
 		// queue not empty, try again later
-		//async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
-		while(!queue_is_empty(&me->_xmit_queue)) {
-			queue_try_remove(&me->_xmit_queue, nullptr);
-		}
+		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
 	}
 	tcp_check_lists_ok();
 }
