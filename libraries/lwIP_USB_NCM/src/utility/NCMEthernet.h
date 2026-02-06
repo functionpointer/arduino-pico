@@ -22,11 +22,27 @@
 
 #include <stdint.h>
 #include <Arduino.h>
-#include "pico/util/queue.h"
 #include <SPI.h>
 #include <LwipEthernet.h>
+#include <LwipIntfDev.h>
+
+#ifdef __FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "freertos/freertos-lwip.h"
+#else
+#include "pico/util/queue.h"
 #include <pico/async_context_threadsafe_background.h>
-#include <pico/critical_section.h>
+#endif
+
+#ifndef NCMETHERNET_RECV_QUEUE_LENGTH
+#define NCMETHERNET_RECV_QUEUE_LENGTH 12
+#endif
+
+#ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
+// only used when not using FreeRTOS
+#define NCMETHERNET_XMIT_QUEUE_LENGTH 12
+#endif
 
 extern "C" {
     typedef struct _ncmethernet_packet_t {
@@ -35,18 +51,12 @@ extern "C" {
     } ncmethernet_packet_t;
 }
 
-/**
-    incoming packet flow:
-    tinyUSB calls tud_network_recv_cb
-    that stores the packet in _ncmethernet_pkg and sets _ncm_ethernet_recv_irq_worker pending
-    _ncm_ethernet_recv_irq_worker, in different execution context, calls _recv_irq_work
-    _recv_irq_work uses _ncm_ethernet_instance to call packetReceivedIRQWorker
-    in NCMEthernetlwIP packetReceivedIRQWorker is overridden to call LwipIntfDev::_irq()
-    LwipIntfDev::_irq() calls readFrameSize() and readFrameData() and _netif.input
 
-    outgoing packet flow:
-    LwipIntfDev calls sendFrame()
-*/
+class NCMEthernet;
+
+extern "C" {
+    extern NCMEthernet *_ncm_ethernet_instance;
+}
 
 class NCMEthernet {
 public:
@@ -57,7 +67,7 @@ public:
     bool begin(const uint8_t *address, netif *netif);
     void end();
 
-    uint16_t sendFrame(const uint8_t *data, uint16_t datalen);
+    uint16_t sendFrame(struct pbuf *pbuf);
 
     uint16_t readFrameSize();
 
@@ -65,9 +75,7 @@ public:
 
     uint16_t readFrame(uint8_t* buffer, uint16_t bufsize);
 
-    void discardFrame(uint16_t ign) {
-        (void) ign;
-    }
+    void discardFrame(uint16_t ign);
 
     bool interruptIsPossible() {
         return false;
@@ -83,13 +91,21 @@ public:
 
     void usbInterfaceCB(int itf, uint8_t *dst, int len);
 
-    virtual void packetReceivedIRQWorker(NCMEthernet *instance) {};
+#ifdef __FREERTOS
+	QueueHandle_t _recv_queue;
+#else
+	queue_t _recv_queue;
+	queue_t _xmit_queue;
 
-    async_context_threadsafe_background_t _async_context;
     async_when_pending_worker_t _recv_irq_worker;
+	async_at_time_worker_t _xmit_irq_worker;
+	static void _try_process_xmit_queue(async_context_t *context, async_at_time_worker_t *worker);
 
-    critical_section_t _recv_critical_section;
-    ncmethernet_packet_t _recv_pkg;
+	async_at_time_worker_t _tud_recv_renew_worker;
+	volatile int32_t pending_tud_recv_renew_count=0;
+	critical_section_t pending_counter_critical_section;
+	static void _try_tud_recv_renew(async_context_t *context, async_at_time_worker_t *worker);
+#endif
 protected:
     netif *_netif;
     uint8_t _id;
@@ -103,14 +119,6 @@ protected:
     static void _usb_interface_cb(int itf, uint8_t *dst, int len, void *param) {
         ((NCMEthernet *)param)->usbInterfaceCB(itf, dst, len);
     }
-    static void _recv_irq_work(async_context_t *context, async_when_pending_worker_t *worker) {
-        NCMEthernet *d = static_cast<NCMEthernet*>(worker->user_data);
-        d->packetReceivedIRQWorker(d);
-    }
+
 };
-
-extern "C" {
-    extern NCMEthernet *_ncm_ethernet_instance;
-}
-
 #endif  // NCM_ETHERNET_H

@@ -61,7 +61,10 @@ extern "C" {
         if (!_lwip_rng) {
             recursive_mutex_init(&__lwipMutex);
             _lwip_rng = new XoshiroCpp::Xoshiro256PlusPlus(micros());
-            __real_lwip_init();
+            {
+                LWIPMutex m;
+                __real_lwip_init();
+            }
 #ifdef __FREERTOS
             __startLWIPThread();
 #endif
@@ -822,6 +825,33 @@ extern "C" {
         LWIPMutex m;
         __real_netif_remove(netif);
     }
+
+    extern void __real_netif_set_link_up(struct netif *netif);
+    void __wrap_netif_set_link_up(struct netif *netif) {
+        #ifdef __FREERTOS
+            // todo
+            if (!__isLWIPThread()) {
+                err_t ret;
+                __ethernet_input_req req = { p, netif, &ret };
+                __lwip(__ethernet_input, &req);
+                return ret;
+            }
+        #endif
+        LWIPMutex m;
+        __real_netif_set_link_up(netif);
+    }
+
+    extern void __real_netif_set_up(struct netif *netif);
+    void __wrap_netif_set_up(struct netif *netif) {
+        LWIPMutex m;
+        __real_netif_set_up(netif);
+    }
+
+	extern void __real_netif_create_ip6_linklocal_address(struct netif *netif, uint8_t from_mac_48bit);
+	void __wrap_netif_create_ip6_linklocal_address(struct netif *netif, uint8_t from_mac_48bit) {
+		LWIPMutex m;
+        __real_netif_create_ip6_linklocal_address(netif, from_mac_48bit);
+	}
 
     extern err_t __real_ethernet_input(struct pbuf *p, struct netif *netif);
     err_t __wrap_ethernet_input(struct pbuf *p, struct netif *netif) {

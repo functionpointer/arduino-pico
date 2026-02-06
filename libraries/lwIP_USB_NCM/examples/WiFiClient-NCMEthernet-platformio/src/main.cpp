@@ -32,19 +32,19 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
 
     Serial.begin(115200);
-    delay(3000);
+    delay(100);
     SER.println();
     SER.println();
     SER.println("Starting NCM Ethernet port");
 
 
     //optional static config
-    // eth.config(my_static_ip_addr, my_static_gateway_and_dns_addr, IPAddress(255, 255, 255, 0), my_static_gateway_and_dns_addr);
+    eth.config(my_static_ip_addr, my_static_gateway_and_dns_addr, IPAddress(255, 255, 255, 0), my_static_gateway_and_dns_addr);
 
     // Start the Ethernet port
     // This starts DHCP in case config() was not called before
     bool ok = eth.begin();
-    delay(1000);
+    delay(100);
     if (!ok) {
         while (1) {
             SER.println("Failed to initialize NCM Ethernet.");
@@ -95,7 +95,7 @@ void loop() {
     WiFiClient client;
     if (!client.connect(host, port)) {
         SER.println("connection failed");
-        delay(5000);
+        delay(500);
         return;
     }
 
@@ -111,7 +111,7 @@ void loop() {
         if (millis() - timeout > 5000) {
             SER.println(">>> Client Timeout !");
             client.stop();
-            delay(60000);
+            delay(500);
             return;
         }
     }
@@ -130,7 +130,7 @@ void loop() {
     client.stop();
 
     if (wait) {
-        delay(300000);  // execute once every 5 minutes, don't flood remote service
+        delay(500);  // execute once every 5 minutes, don't flood remote service
     }
     wait = true;
 }

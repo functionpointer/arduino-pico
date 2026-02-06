@@ -36,6 +36,13 @@ void __removeEthernetGPIO(int pin);
 // Internal Ethernet helper functions
 void __startEthernetContext();
 
+#ifndef __FREERTOS
+#include <pico/async_context.h>
+// get ethernet async context so when_pending handlers can be added to it
+// allows IRQ contexts to schedule functions to run with lwip mutex
+// non-IRQ contexts can just call ethernet_arch_lwip_begin() instead, which does a blocking mutex acquire
+extern "C" async_context_t *__getEthernetContext();
+#endif
 int __addEthernetPacketHandler(std::function<void(void)> _packetHandler);
 void __removeEthernetPacketHandler(int id);
 

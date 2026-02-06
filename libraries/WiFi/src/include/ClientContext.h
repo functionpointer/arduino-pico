@@ -48,6 +48,7 @@ public:
     ClientContext(tcp_pcb* pcb, discard_cb_t discard_cb, void* discard_cb_arg) :
         _pcb(pcb), _rx_buf(0), _rx_buf_offset(0), _discard_cb(discard_cb), _discard_cb_arg(discard_cb_arg), _refcnt(0), _next(0),
         _sync(::getDefaultPrivateGlobalSyncValue()) {
+        LWIPMutex m;
         tcp_setprio(_pcb, TCP_PRIO_MIN);
         tcp_arg(_pcb, this);
         tcp_recv(_pcb, &_s_recv);
@@ -64,6 +65,7 @@ public:
     }
 
     err_t abort() {
+        LWIPMutex m;
         if (_pcb) {
             DEBUGV(":abort\r\n");
             tcp_arg(_pcb, nullptr);
@@ -78,6 +80,7 @@ public:
     }
 
     err_t close() {
+        LWIPMutex m;
         err_t err = ERR_OK;
         if (_pcb) {
             DEBUGV(":close\r\n");
@@ -162,10 +165,12 @@ public:
     }
 
     size_t availableForWrite() const {
+        LWIPMutex m;
         return _pcb ? tcp_sndbuf(_pcb) : 0;
     }
 
     void setNoDelay(bool nodelay) {
+        LWIPMutex m;
         if (!_pcb) {
             return;
         }
@@ -177,6 +182,7 @@ public:
     }
 
     bool getNoDelay() const {
+        LWIPMutex m;
         if (!_pcb) {
             return false;
         }
@@ -196,6 +202,7 @@ public:
     }
 
     const ip_addr_t* getRemoteAddress() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -204,6 +211,7 @@ public:
     }
 
     uint16_t getRemotePort() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -212,6 +220,7 @@ public:
     }
 
     const ip_addr_t* getLocalAddress() const {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -328,26 +337,29 @@ public:
                 return false;
             }
 
-            if (!_pcb) {
-                return false;
-            }
-            // force lwIP to send what can be sent
-            tcp_output(_pcb);
+            {
+                LWIPMutex m;
+                if (!_pcb) {
+                    return false;
+                }
+                // force lwIP to send what can be sent
+                tcp_output(_pcb);
 
-            int sndbuf = tcp_sndbuf(_pcb);
-            if (sndbuf != prevsndbuf) {
-                // send buffer has changed (or first iteration)
-                prevsndbuf = sndbuf;
-                // We just sent a bit, move timeout forward
-                last_sent = millis();
-            }
+                int sndbuf = tcp_sndbuf(_pcb);
+                if (sndbuf != prevsndbuf) {
+                    // send buffer has changed (or first iteration)
+                    prevsndbuf = sndbuf;
+                    // We just sent a bit, move timeout forward
+                    last_sent = millis();
+                }
 
-            // esp_yield(); // from sys or os context
+                // esp_yield(); // from sys or os context
 
-            if ((state() != ESTABLISHED) || (sndbuf == TCP_SND_BUF)) {
-                // peer has closed or all bytes are sent and acked
-                // ((TCP_SND_BUF-sndbuf) is the amount of un-acked bytes)
-                break;
+                if ((state() != ESTABLISHED) || (sndbuf == TCP_SND_BUF)) {
+                    // peer has closed or all bytes are sent and acked
+                    // ((TCP_SND_BUF-sndbuf) is the amount of un-acked bytes)
+                    break;
+                }
             }
         }
 
@@ -356,6 +368,7 @@ public:
     }
 
     uint8_t state() const {
+        LWIPMutex m;
         if (!_pcb || _pcb->state == CLOSE_WAIT || _pcb->state == CLOSING) {
             // CLOSED for WiFIClient::status() means nothing more can be written
             return CLOSED;
@@ -365,6 +378,7 @@ public:
     }
 
     size_t write(const char* ds, const size_t dl) {
+        // no LWIPMutex here, _write_from_source contains delay()
         if (!_pcb) {
             return 0;
         }
@@ -372,6 +386,7 @@ public:
     }
 
     size_t write(Stream& stream) {
+        LWIPMutex m;
         if (!_pcb) {
             return 0;
         }
@@ -508,6 +523,7 @@ protected:
     }
 
     bool _write_some() {
+        LWIPMutex m;
         if (!_datasource || !_pcb) {
             return false;
         }
@@ -606,6 +622,7 @@ protected:
     }
 
     void _consume(size_t size) {
+        LWIPMutex m;
         ptrdiff_t left = _rx_buf->len - _rx_buf_offset - size;
         if (left > 0) {
             _rx_buf_offset += size;
