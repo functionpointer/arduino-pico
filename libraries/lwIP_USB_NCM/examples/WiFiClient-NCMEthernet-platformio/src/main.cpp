@@ -5,6 +5,7 @@
 
 #include <Arduino.h>
 #include <NCMEthernetlwIP.h>
+#include <USB.h>
 
 const char* host = "djxmmx.net";
 const uint16_t port = 17;
@@ -23,6 +24,15 @@ IPAddress my_static_gateway_and_dns_addr(192, 168, 137, 1);
 
 void setup() {
     // enable Serial1 so it can be used by USE_REAL_UART or by DEBUG_RP2040_PORT
+    pinMode(18, OUTPUT);
+    pinMode(19, OUTPUT);
+    pinMode(20, OUTPUT);
+    pinMode(21, OUTPUT);
+    pinMode(15, OUTPUT);
+    pinMode(14, OUTPUT);
+    pinMode(13, OUTPUT);
+    pinMode(12, OUTPUT);
+
     Serial1.end();
     Serial1.setTX(16);
     Serial1.setRX(17);
@@ -32,7 +42,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
 
     Serial.begin(115200);
-    delay(100);
+    delay(3000);
     SER.println();
     SER.println();
     SER.println("Starting NCM Ethernet port");
@@ -60,7 +70,7 @@ void loop() {
     static unsigned long next_msg = 0;
     static bool led_on = false;
     if (millis() > next_msg) {
-        SER.println(".");
+        // SER.println(".");
         next_msg = millis() + 1000;
         digitalWrite(LED_BUILTIN, led_on);
         led_on ^= 1;
@@ -89,7 +99,7 @@ void loop() {
 
     static bool wait = false;
 
-    SER.printf("connecting to %s:%i\n", host, port);
+    SER.printf("connecting to %s:%i ...", host, port);
 
     // Use WiFiClient class to create TCP connections
     WiFiClient client;
@@ -100,37 +110,46 @@ void loop() {
     }
 
     // This will send a string to the server
-    SER.println("sending data to server");
+    SER.print("sending data to server...");
     if (client.connected()) {
-        client.println("hello from RP2040");
+        client.println("hello from NCM RP2040");
     }
 
     // wait for data to be available
     unsigned long timeout = millis();
-    while (client.available() == 0) {
-        if (millis() - timeout > 5000) {
+    while (true) {
+        if(client.available() != 0) {
+            break;
+        }
+
+        if (millis() - timeout > 1000) {
             SER.println(">>> Client Timeout !");
             client.stop();
-            delay(500);
+            delay(5);
             return;
         }
     }
 
     // Read all the lines of the reply from server and print them to Serial
-    SER.println("receiving from remote server");
+    // SER.println("receiving from remote server");
     // not testing 'client.connected()' since we do not need to send data here
-    while (client.available()) {
+    int i = 0;
+    while (true) {
+        if(client.available() == 0) {
+            break;
+        }
         char ch = static_cast<char>(client.read());
-        SER.print(ch);
+        if(i++<10)
+            SER.print(ch);
     }
 
     // Close the connection
-    SER.println();
+    //SER.println();
     SER.println("closing connection");
     client.stop();
 
     if (wait) {
-        delay(500);  // execute once every 5 minutes, don't flood remote service
+        delay(500);
     }
     wait = true;
 }
