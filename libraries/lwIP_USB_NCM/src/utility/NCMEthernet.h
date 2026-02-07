@@ -40,7 +40,7 @@
 #endif
 
 #ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
-// only used when not using FreeRTOS
+// only used on baremetal, not FreeRTOS
 #define NCMETHERNET_XMIT_QUEUE_LENGTH 12
 #endif
 
