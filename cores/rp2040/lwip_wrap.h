@@ -22,6 +22,7 @@
 
 #include <functional>
 #include <Arduino.h>
+#include <USB.h> // for debug
 #include <pico/cyw43_arch.h>
 #include <lwip/pbuf.h>
 #include <lwip/udp.h>
@@ -53,6 +54,7 @@ extern volatile bool __needsIRQEN;
 class LWIPMutex {
 public:
     LWIPMutex() {
+		debug_put(LWIP_MUTEX, true);
 #if !defined(__FREERTOS)
         __inLWIP++;
         if (ethernet_arch_lwip_begin) {
@@ -75,6 +77,11 @@ public:
             __needsIRQEN = false;
             ethernet_arch_lwip_gpio_unmask();
         }
+
+		if(!__inLWIP) {
+			debug_put(LWIP_MUTEX, false);
+		}
+
 #endif
     }
 };

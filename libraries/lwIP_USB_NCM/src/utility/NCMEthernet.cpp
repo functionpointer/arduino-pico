@@ -156,8 +156,8 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 
 #ifdef __FREERTOS
 	// do we need __get_freertos_mutex_for_ptr(&USB.mutex) for recv_renew?
-  // in FreeRTOS we certainly could block to get it without an issue
-  // just slower, might cause more task switches
+  	// in FreeRTOS we certainly could block to get it without an issue
+  	// just slower, might cause more task switches
 	tud_network_recv_renew();
 #else
 	// do we need &USB.mutex for recv_renew?
@@ -205,7 +205,9 @@ void NCMEthernet::_try_tud_recv_renew(__unused async_context_t *context, __unuse
 		} else {
 			me->pending_tud_recv_renew_count--;
 			critical_section_exit(&me->pending_counter_critical_section);
-    	tud_network_recv_renew();
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_NORMAL, true);
+    		tud_network_recv_renew();
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_NORMAL, false);
 		}
 	}
 }
@@ -267,6 +269,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
 		return;
 	}
+	debug_put(USB_NCM_TRY_PROCESS, true);
 	pbuf *p;
 	while(true) {
 		if(!tud_ready()) {
@@ -285,6 +288,7 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 		tud_task();
 	}
 	mutex_exit(&USB.mutex);
+	debug_put(USB_NCM_TRY_PROCESS, false);
 	if (!queue_is_empty(&me->_xmit_queue)) {
 		// queue not empty, try again later
 		async_context_add_at_time_worker_in_ms(__getEthernetContext(), &me->_xmit_irq_worker, 1);
@@ -383,7 +387,8 @@ extern "C" {
         // normally that is safe as _irq() disables further interrupts until the lwip task as finished the callback
         // however, that doesn't do anything in our case
         // should be fine anyways as the data is always the same (LwipIntfDev<NCMEthernet>::_lwipCallback, _ncm_ethernet_instance)
-			NCMEthernetlwIP::_call_irq(nullptr, nullptr);
+		NCMEthernetlwIP::_call_irq(nullptr, nullptr);
+		debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 		return true;
 #else
 		// we may or may not be in irq context, as tud_task() is called by usbTaskIRQ but also plenty of libraries
@@ -394,10 +399,14 @@ extern "C" {
 		bool added = queue_try_add(&_ncm_ethernet_instance->_recv_queue, &p);
 		if(added) {
 		} else {
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL, true);
 			tud_network_recv_renew(); // do it here as the real call will never come
+			debug_put(NCM_TUD_NETWORK_RECV_RENEW_QUEUE_FULL, false);
 		}
 
+		debug_put(NCM_RECV_IRQ_PENDING, true);
     	async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
+		debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 		return true;
 #endif
     }

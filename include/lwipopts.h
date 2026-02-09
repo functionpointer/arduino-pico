@@ -11,6 +11,18 @@ extern void interrupts();
 #define SYS_ARCH_PROTECT(lev) {(void) lev; noInterrupts();}
 #define SYS_ARCH_UNPROTECT(lev) {(void) lev; interrupts();}
 
+extern void lwip_assert_core_locked();
+#define LWIP_ASSERT_CORE_LOCKED() {lwip_assert_core_locked();}
+
+extern void lwip_sys_mutex_lock();
+extern void lwip_sys_mutex_unlock();
+#define sys_mutex_new(mu) ERR_OK
+#define sys_mutex_lock(mu) do {lwip_sys_mutex_lock();} while(0);
+#define sys_mutex_unlock(mu) do {lwip_sys_mutex_unlock();} while(0);
+#define sys_mutex_free(mu)
+#define sys_mutex_valid(mu) 0
+#define sys_mutex_set_invalid(mu)
+
 #ifndef DEBUG_RP2040_PORT
 extern void panic(const char *fmt, ...);
 #define LWIP_PLATFORM_ASSERT(x) panic("lwip")
@@ -80,6 +92,11 @@ extern void __setSystemTime(unsigned long long sec, unsigned long us);
 #define SNTP_MAX_SERVERS                  2
 //#define SNTP_SERVER_ADDRESS               "pool.ntp.org"
 #define SNTP_SERVER_DNS                   1
+
+/*#define MEM_OVERFLOW_CHECK 2
+#define MEM_SANITY_CHECK 1*/
+#define MEMP_SANITY_CHECK 1
+#define MEMP_OVERFLOW_CHECK 2
 
 #ifndef LWIP_DEBUG
 #define LWIP_STATS                    0

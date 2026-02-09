@@ -44,6 +44,50 @@
 
 USBClass USB;
 
+void debug_put(DBG_PIN_REASON reason, bool value) {
+	int pin = 0;
+	for(int i=0;i<DEBUG_CHANNEL_MAP_SIZE;i++) {
+		if (debug_chan_map[i]>>reason & 0x1) {
+			pin = debug_chan_pins[i];
+			break;
+		}
+	}
+	if(pin == 0) return;
+	gpio_put(pin, value);
+}
+
+void debug_put_gca(DBG_PIN_REASON reason, bool value) {
+    uint gca = __get_current_exception();
+    if(gca==0) {
+        debug_put(reason, value);
+    } else if(gca==46) {
+        debug_put((DBG_PIN_REASON)(((uint64_t)reason)+1), value);
+    } else {
+        panic("unexpected gca");
+    }
+}
+
+void debug_toggle(DBG_PIN_REASON reason) {
+	int pin = 0;
+	for(int i=0;i<DEBUG_CHANNEL_MAP_SIZE;i++) {
+		if (debug_chan_map[i]>>reason & 0x1) {
+			pin = debug_chan_pins[i];
+			break;
+		}
+	}
+	if(pin == 0) return;
+	gpio_xor_mask(1u << pin);
+}
+
+volatile bool dbg_norecurse = false;
+void debug_put_norecurse(DBG_PIN_REASON reason, bool value) {
+	if(dbg_norecurse == value) {
+		__breakpoint();
+	}
+	dbg_norecurse = value;
+	debug_put(reason, value);
+}
+
 // USB processing will be a periodic timer task
 #define USB_TASK_INTERVAL 1000
 
@@ -433,8 +477,10 @@ void USBClass::usbIRQ() {
     // in this file which will do a tud_task itself, so we'll just do nothing
     // until the next tick; we won't starve
     if (mutex_try_enter(&USB.mutex, nullptr)) {
+		debug_put(USB_IRQ, true);
         tud_task();
         mutex_exit(&USB.mutex);
+		debug_put(USB_IRQ, false);
     }
 }
 

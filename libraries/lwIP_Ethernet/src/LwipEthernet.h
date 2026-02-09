@@ -43,6 +43,9 @@ void __startEthernetContext();
 // non-IRQ contexts can just call ethernet_arch_lwip_begin() instead, which does a blocking mutex acquire
 extern "C" async_context_t *__getEthernetContext();
 #endif
+
+void lwip_assert_core_locked();
+
 int __addEthernetPacketHandler(std::function<void(void)> _packetHandler);
 void __removeEthernetPacketHandler(int id);
 

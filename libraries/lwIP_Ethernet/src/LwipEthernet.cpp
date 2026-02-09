@@ -18,6 +18,7 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <USB.h> // for debug
 #include <LwipEthernet.h>
 #include <lwip_wrap.h>
 #include <lwip/timeouts.h>
@@ -86,6 +87,11 @@ void ethernet_arch_lwip_end() {
         return;
     }
 #endif
+    /*if (lwip_ethernet_async_context.lock_mutex.enter_count == 1) {
+		exception_on_outer = -1;
+	} else if(__get_current_exception() == 46 && lwip_ethernet_async_context.lock_mutex.enter_count == 2) {
+		exception_on_outer = -1;
+	}*/
     async_context_release_lock(_context);
 #endif
 }
@@ -238,13 +244,16 @@ static void ethernetTask(void *param) {
 #else
 // This will only be called under the protection of the async context mutex, so no re-entrancy checks needed
 static void ethernet_timeout_reached(__unused async_context_t *context, __unused async_at_time_worker_t *worker) {
+	debug_put(LWIP_POLL_PENDING, false);
     assert(worker == &ethernet_timeout_worker);
     ethernet_arch_lwip_gpio_mask(); // Ensure non-polled devices won't interrupt us
+	debug_put(LWIP_ETH_POLL, true);
     for (auto handlePacket : _handlePacketList) {
         handlePacket.second();
         sys_check_timeouts();
     }
     ethernet_arch_lwip_gpio_unmask();
+	debug_put(LWIP_ETH_POLL, false);
 }
 
 // The when pending worker that's always pending and scheduling the actual ethernet_timeout_worker seems redundant
@@ -253,9 +262,12 @@ static void ethernet_timeout_reached(__unused async_context_t *context, __unused
 // This happens because user code leaving _context (see lwip_wrap.h) causes this worker to run,
 // which reschedules ethernet_timeout_worker.
 static void update_next_timeout(async_context_t *context, async_when_pending_worker_t *worker) {
+	debug_put(LWIP_NEXT_TIMEOUT_AT_TIME_WORKER, true);
     assert(worker == &always_pending_update_timeout_worker);
     worker->work_pending = true;
+	debug_put(LWIP_POLL_PENDING, true);
     async_context_add_at_time_worker_in_ms(context, &ethernet_timeout_worker, _pollingPeriod);
+	debug_put(LWIP_NEXT_TIMEOUT_AT_TIME_WORKER, false);
 }
 #endif
 
@@ -295,6 +307,26 @@ extern "C" {
 }
 
 #endif
+
+void lwip_assert_core_locked() {
+	async_context_lock_check(__getEthernetContext());
+
+    /*if (exception_on_outer != __get_current_exception()) {
+        panic("in unexpected context!");
+    }*/
+}
+volatile int sys_mutex_current_exception = -1;
+void lwip_sys_mutex_lock() {
+	if (sys_mutex_current_exception != -1) {
+		__breakpoint();
+	}
+	sys_mutex_current_exception = __get_current_exception();
+}
+
+void lwip_sys_mutex_unlock() {
+	sys_mutex_current_exception = -1;
+}
+
 void lwipPollingPeriod(int ms) {
     if (ms > 0) {
         // No need for mutexes, this is an atomic 32b write
