@@ -829,12 +829,10 @@ extern "C" {
     extern void __real_netif_set_link_up(struct netif *netif);
     void __wrap_netif_set_link_up(struct netif *netif) {
         #ifdef __FREERTOS
-            // todo
             if (!__isLWIPThread()) {
-                err_t ret;
-                __ethernet_input_req req = { p, netif, &ret };
-                __lwip(__ethernet_input, &req);
-                return ret;
+                __netif_set_link_up_req req = { netif };
+                __lwip(__netif_set_link_up, &req);
+				return;
             }
         #endif
         LWIPMutex m;
@@ -843,15 +841,31 @@ extern "C" {
 
     extern void __real_netif_set_up(struct netif *netif);
     void __wrap_netif_set_up(struct netif *netif) {
+        #ifdef __FREERTOS
+            if (!__isLWIPThread()) {
+                __netif_set_up_req req = { netif };
+                __lwip(__netif_set_up, &req);
+				return;
+            }
+        #endif
         LWIPMutex m;
         __real_netif_set_up(netif);
     }
 
+#if LWIP_IPV6
 	extern void __real_netif_create_ip6_linklocal_address(struct netif *netif, uint8_t from_mac_48bit);
 	void __wrap_netif_create_ip6_linklocal_address(struct netif *netif, uint8_t from_mac_48bit) {
+        #ifdef __FREERTOS
+            if (!__isLWIPThread()) {
+                __netif_create_ip6_linklocal_address_req req = { netif, from_mac_48bit };
+                __lwip(__netif_create_ip6_linklocal_address, &req);
+				return;
+            }
+        #endif
 		LWIPMutex m;
         __real_netif_create_ip6_linklocal_address(netif, from_mac_48bit);
 	}
+#endif
 
     extern err_t __real_ethernet_input(struct pbuf *p, struct netif *netif);
     err_t __wrap_ethernet_input(struct pbuf *p, struct netif *netif) {
@@ -894,7 +908,6 @@ extern "C" {
         return __real_cyw43_wifi_leave(self, itf);
     }
 #endif
-
 
     void lwip_callback(void (*cb)(void *), void *cbData, __callback_req *buffer) {
 #ifdef __FREERTOS
