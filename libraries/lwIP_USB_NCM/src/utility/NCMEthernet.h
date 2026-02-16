@@ -36,7 +36,11 @@
 #endif
 
 #ifndef NCMETHERNET_RECV_QUEUE_LENGTH
-#define NCMETHERNET_RECV_QUEUE_LENGTH 12
+// tud_network_recv_cb relies on handlePackets to fetch data from the recv queue
+// for memory safety it has to flush any unhandled packets from the recv queue before returning
+// handlePackets will stop fetching after 10 packets.
+// it can also stop before that, when pbuf_alloc fails. 1 minimizes potential for lost packets
+#define NCMETHERNET_RECV_QUEUE_LENGTH 1
 #endif
 
 #ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
@@ -93,18 +97,14 @@ public:
 
 #ifdef __FREERTOS
 	QueueHandle_t _recv_queue;
+	QueueHandle_t _xmit_queue;
 #else
 	queue_t _recv_queue;
 	queue_t _xmit_queue;
+	volatile bool _marker;
 
     async_when_pending_worker_t _recv_irq_worker;
-	async_at_time_worker_t _xmit_irq_worker;
-	static void _try_process_xmit_queue(async_context_t *context, async_at_time_worker_t *worker);
-
-	async_at_time_worker_t _tud_recv_renew_worker;
-	volatile int32_t pending_tud_recv_renew_count=0;
-	critical_section_t pending_counter_critical_section;
-	static void _try_tud_recv_renew(async_context_t *context, async_at_time_worker_t *worker);
+    void _try_process_xmit_queue(__unused async_context_t *context, __unused async_at_time_worker_t *worker);
 #endif
 protected:
     netif *_netif;

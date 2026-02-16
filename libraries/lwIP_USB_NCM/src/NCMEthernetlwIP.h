@@ -13,5 +13,6 @@ public:
     bool begin(const uint8_t* macAddress = nullptr, const uint16_t mtu = DEFAULT_MTU);
 
 	static void _call_irq(__unused async_context_t *context, __unused async_when_pending_worker_t *worker);
+	void _call_handlepackets();
 
 };

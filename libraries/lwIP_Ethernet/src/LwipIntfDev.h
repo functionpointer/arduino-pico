@@ -484,11 +484,9 @@ void LwipIntfDev<RawDev>::end() {
 template<class RawDev>
 void LwipIntfDev<RawDev>::_lwipCallback(void *param) {
     LwipIntfDev *d = static_cast<LwipIntfDev*>(param);
-    debug_put(LWIP_NCM_RECV_IRQ, true);
     d->handlePackets();
     sys_check_timeouts();
     ethernet_arch_lwip_gpio_unmask();
-    debug_put(LWIP_NCM_RECV_IRQ, false);
 }
 
 template<class RawDev>
