@@ -615,7 +615,7 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
             // prevent starvation
         {
 			debug_put(ETHERNET_HANDLEPACKETS, false);
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_OK;
         }
 
@@ -625,17 +625,14 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
         debug_put(ETHERNET_READFRAMESIZE, true);
         uint16_t tot_len = RawDev::readFrameSize();
         debug_put(ETHERNET_READFRAMESIZE, false);
-        if (!tot_len) {
+            if (!tot_len) {
 #ifdef __FREERTOS
             xSemaphoreGive(_hwMutex);
 #endif
 			debug_put(ETHERNET_HANDLEPACKETS, false);
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_OK;
         }
-		if(pkt>=2) {
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, true);
-		}
 
         // from doc: use PBUF_RAM for TX, PBUF_POOL from RX
         // however:
@@ -661,17 +658,24 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
             xSemaphoreGive(_hwMutex);
 #endif
 			debug_put(ETHERNET_HANDLEPACKETS, false);
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_BUF;
+        }
+        if (pbuf->len > tot_len) {
+            __breakpoint();
         }
 
         debug_put(ETHERNET_READFRAMEDATA, true);
         uint16_t len = RawDev::readFrameData((uint8_t*)pbuf->payload, tot_len);
         debug_put(ETHERNET_READFRAMEDATA, false);
+        if (does_contain_citation(pbuf)) {
+            debug_put(ETHERNET_LARGE_PACKET, true);
+        }
 #ifdef __FREERTOS
         xSemaphoreGive(_hwMutex);
 #endif
         if (len != tot_len) {
+            __breakpoint();
             // tot_len is given by readFrameSize()
             // and is supposed to be honoured by readFrameData()
             // todo: ensure this test is unneeded, remove the print
@@ -679,7 +683,7 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
             pbuf_free(pbuf);
             debug_put(ETHERNET_PBUF_FREE, false);
 			debug_put(ETHERNET_HANDLEPACKETS, false);
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_BUF;
         }
 
@@ -696,17 +700,20 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
 #endif
 
         if (err != ERR_OK) {
+            if (does_contain_citation(pbuf)) {
+                __breakpoint();
+            }
             debug_put(ETHERNET_PBUF_FREE, true);
             pbuf_free(pbuf);
             debug_put(ETHERNET_PBUF_FREE, false);
 			debug_put(ETHERNET_HANDLEPACKETS, false);
-			debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+            debug_put(ETHERNET_LARGE_PACKET, false);
             return err;
         }
         // (else) allocated pbuf is now lwIP's responsibility
     }
 	debug_put(ETHERNET_HANDLEPACKETS, false);
-	debug_put(ETHERNET_HANDLEPACKETS_2ND_PACKET, false);
+    debug_put(ETHERNET_LARGE_PACKET, false);
 }
 
 template<class RawDev>

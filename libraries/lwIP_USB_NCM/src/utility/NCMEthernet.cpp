@@ -138,6 +138,9 @@ uint16_t NCMEthernet::readFrameSize() {
 		return 0;
 	}
 #endif
+	if (does_contain_citation_buf(p.src, p.size)) {
+		debug_put(NCM_RECV_LARGE_PACKET, true);
+	}
 	return p.size;
 }
 
@@ -153,6 +156,7 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 	}
 #endif
   memcpy(buffer, (const void*)p.src, min(framesize, p.size));
+	debug_put(NCM_RECV_LARGE_PACKET, false);
 
 #ifdef __FREERTOS
 	// do we need __get_freertos_mutex_for_ptr(&USB.mutex) for recv_renew?
@@ -227,7 +231,9 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 
 		/* if the network driver can accept another packet, we make it happen */
 		if (tud_network_can_xmit(p->tot_len)) {
+			debug_put(TUD_NETWORK_XMIT, true);
 			tud_network_xmit(p, 0);
+			debug_put(TUD_NETWORK_XMIT, false);
 			return p->tot_len;
 		}
 
@@ -279,7 +285,9 @@ void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __u
 			break;
 		}
 		if(tud_network_can_xmit(p->tot_len)) {
+			debug_put(TUD_NETWORK_XMIT, true);
 			tud_network_xmit(p, 0);
+			debug_PUT(TUD_NETWORK_XMIT, false);
 			if (!queue_try_remove(&me->_xmit_queue, nullptr)) {
 				panic("couldn't remove packet from queue after transmitting");
 			}
@@ -315,6 +323,9 @@ extern "C" {
 			ncmethernet_packet_t p;
 			p.src = src;
 			p.size = size;
+			if (does_contain_citation_buf(p.src, p.size)) {
+				debug_put(NCM_TUD_NETWORK_RECV_CB, true);
+			}
 #ifdef __FREERTOS
 			// we get called as part of tud_task() from somewhere
 			// might be in freertosUSBTask(), might be in SerialUSB stuff, delay(), or something else
@@ -367,6 +378,14 @@ extern "C" {
 			// enqueue packet to recv queue without waiting for a response from lwip task
 			// lwip task may have same or lower priority than us
 			// so we allow ourselves to be blocked for a small amount of time to give lwip time to process the packets
+
+			ncmethernet_packet_t peek;
+			/*if(xQueuePeek(_ncm_ethernet_instance->_recv_queue, &peek, 0) == pdPASS) {
+				if(peek.src == src) {
+					__breakpoint();
+				}
+			}*/
+			if
 			if (!xQueueSend(_ncm_ethernet_instance->_recv_queue, &p, 2)) {
 					// if the time isn't enough we are overwhelmed so we drop the packet.
 					// should cause sender to slow down thanks to TCP

@@ -103,28 +103,38 @@ void loop() {
 
     // Use WiFiClient class to create TCP connections
     WiFiClient client;
+    debug_put(CLIENT_CONNECT, true);
     if (!client.connect(host, port)) {
+        debug_put(CLIENT_CONNECT, false);
         SER.println("connection failed");
         delay(500);
         return;
     }
+    debug_put(CLIENT_CONNECT, false);
 
     // This will send a string to the server
     SER.print("sending data to server...");
     if (client.connected()) {
+        debug_put(CLIENT_PRINTLN, true);
         client.println("hello from NCM RP2040");
+        debug_put(CLIENT_PRINTLN, false);
     }
 
     // wait for data to be available
     unsigned long timeout = millis();
     while (true) {
+        debug_put(CLIENT_AVAILABLE, true);
         if(client.available() != 0) {
+            debug_put(CLIENT_AVAILABLE, false);
             break;
         }
+        debug_put(CLIENT_AVAILABLE, false);
 
         if (millis() - timeout > 1000) {
             SER.println(">>> Client Timeout !");
+            debug_put(CLIENT_STOP, true);
             client.stop();
+            debug_put(CLIENT_STOP, false);
             delay(5);
             return;
         }
@@ -135,10 +145,15 @@ void loop() {
     // not testing 'client.connected()' since we do not need to send data here
     int i = 0;
     while (true) {
+        debug_put(CLIENT_AVAILABLE, true);
         if(client.available() == 0) {
+            debug_put(CLIENT_AVAILABLE, false);
             break;
         }
+        debug_put(CLIENT_AVAILABLE, false);
+        debug_put(CLIENT_READ, true);
         char ch = static_cast<char>(client.read());
+        debug_put(CLIENT_READ, false);
         if(i++<10)
             SER.print(ch);
     }
@@ -146,7 +161,9 @@ void loop() {
     // Close the connection
     //SER.println();
     SER.println("closing connection");
+    debug_put(CLIENT_STOP, true);
     client.stop();
+    debug_put(CLIENT_STOP, false);
 
     if (wait) {
         delay(500);

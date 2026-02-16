@@ -44,6 +44,75 @@
 
 USBClass USB;
 
+bool does_contain_citation_buf(const uint8_t* buffer, uint16_t bufsize) {
+	const uint8_t *ip_hdr = &buffer[6+6+2];
+	const uint16_t ip_hdr_len = (ip_hdr[2]<<8)+ip_hdr[3];
+
+	bufsize = std::min(bufsize, ip_hdr_len);
+
+    int bracketopen = 0;
+    int bracketclose = 0;
+    int quotes = 0;
+    int spaces = 0;
+    int periods = 0;
+    for (int i=0;i<bufsize;i++) {
+        char c = buffer[i];
+        switch(c) {
+            case '"':
+                quotes++;
+                break;
+            case '(':
+                bracketopen++;
+                break;
+            case ')':
+                bracketclose++;
+                break;
+            case ' ':
+                spaces++;
+                break;
+            case '.':
+                periods++;
+                break;
+        }
+    }
+    if (bracketopen >= 1 && bracketclose >= 1 && quotes >= 2 && spaces >= 8 && periods >= 1 && bufsize >= 60) {
+        return true;
+    }
+    return false;
+}
+
+bool does_contain_citation(struct pbuf *p) {
+    int bracketopen = 0;
+    int bracketclose = 0;
+    int quotes = 0;
+    int spaces = 0;
+    int periods = 0;
+    for (int i=0;i<p->tot_len;i++) {
+        char c = pbuf_get_at(p, i);
+        switch(c) {
+            case '"':
+                quotes++;
+                break;
+            case '(':
+                bracketopen++;
+                break;
+            case ')':
+                bracketclose++;
+                break;
+            case ' ':
+                spaces++;
+                break;
+            case '.':
+                periods++;
+                break;
+        }
+    }
+    if (bracketopen >= 1 && bracketclose >= 1 && quotes >= 2 && spaces >= 8 && periods >= 1 && p->tot_len >= 60) {
+        return true;
+    }
+    return false;
+}
+
 void debug_put(DBG_PIN_REASON reason, bool value) {
 	int pin = 0;
 	for(int i=0;i<DEBUG_CHANNEL_MAP_SIZE;i++) {

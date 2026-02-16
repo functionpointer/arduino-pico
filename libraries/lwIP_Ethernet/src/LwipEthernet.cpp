@@ -309,7 +309,9 @@ extern "C" {
 #endif
 
 void lwip_assert_core_locked() {
+#ifndef __FREERTOS
 	async_context_lock_check(__getEthernetContext());
+#endif
 
     /*if (exception_on_outer != __get_current_exception()) {
         panic("in unexpected context!");
