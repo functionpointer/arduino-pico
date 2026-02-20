@@ -14,11 +14,6 @@ extern void interrupts();
 extern void lwip_assert_core_locked();
 #define LWIP_ASSERT_CORE_LOCKED() {lwip_assert_core_locked();}
 
-extern void lwip_sys_mutex_lock();
-extern void lwip_sys_mutex_unlock();
-#define sys_mutex_new(mu) ERR_OK
-#define sys_mutex_lock(mu) do {lwip_sys_mutex_lock();} while(0);
-#define sys_mutex_unlock(mu) do {lwip_sys_mutex_unlock();} while(0);
 #define sys_mutex_free(mu)
 #define sys_mutex_valid(mu) 0
 #define sys_mutex_set_invalid(mu)
