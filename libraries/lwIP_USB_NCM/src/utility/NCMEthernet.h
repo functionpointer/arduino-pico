@@ -101,7 +101,8 @@ public:
 #else
 	queue_t _recv_queue;
 	queue_t _xmit_queue;
-	volatile bool _marker;
+	volatile bool _marker = false;
+	bool _tud_recv_cb_called = false;
 
     async_when_pending_worker_t _recv_irq_worker;
     void _try_process_xmit_queue(__unused async_context_t *context, __unused async_at_time_worker_t *worker);

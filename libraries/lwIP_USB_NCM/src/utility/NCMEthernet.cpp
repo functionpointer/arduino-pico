@@ -129,6 +129,7 @@ uint16_t NCMEthernet::readFrameSize() {
 		if(!queue_is_empty(&this->_recv_queue)) {
 			panic("recv_queue not empty but marker set");
 		}
+		async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
 		return 0;
 	}
 	if(!queue_try_peek(&this->_recv_queue, &p)) {
@@ -283,6 +284,7 @@ extern "C" {
 
     bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
 			if (_ncm_ethernet_instance == nullptr) {
+					debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
 					return false;
 			}
 			debug_put(NCM_TUD_NETWORK_RECV_CB, true);
@@ -384,10 +386,12 @@ extern "C" {
 		if(!_ncm_ethernet_instance->_marker) {
 			// not in lwip, can't call pbuf_alloc inside handlePackets safely.
 			debug_put(NCM_RECV_IRQ_PENDING, true);
+			debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
 			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
 			return false;
 		}
+		_ncm_ethernet_instance->_tud_recv_cb_called = true;
 
 		try_again:
 		bool added = queue_try_add(&_ncm_ethernet_instance->_recv_queue, &p);
@@ -398,6 +402,7 @@ extern "C" {
 			if(!added) {
 				goto try_again;
 			}
+			debug_put(NCM_TUD_NETWORK_RECV_FALSE, false);
 			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 			return true;
 		} else {
@@ -408,6 +413,7 @@ extern "C" {
 			// signal tinyusb that we couldn't get this packet processed. schedule worker to try again later
 			debug_put(NCM_RECV_IRQ_PENDING, true);
 			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
+			debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
 			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 			return false;
 		}

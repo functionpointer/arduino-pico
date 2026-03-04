@@ -16,7 +16,7 @@ bool NCMEthernetlwIP::begin(const uint8_t *macAddress, const uint16_t mtu) {
     if(!LwipIntfDev<NCMEthernet>::begin(macAddress, mtu)) {
 		return false;
 	}
-	//__removeEthernetPacketHandler(this->_phID); // this is added bc LwipIntfDev thinks we must be polled
+	__removeEthernetPacketHandler(this->_phID); // this is added bc LwipIntfDev thinks we must be polled
 	// but we actually do interrupts. polling us anyway is inefficient at best, deadlock causing at worst
 
 #ifndef __FREERTOS
@@ -31,6 +31,7 @@ void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_wor
 	if (!mutex_try_enter(&USB.mutex, NULL)) {
 		// couldn't get usb, try again later
 		async_context_set_work_pending(context, worker);
+		debug_put(NCM_RECV_IRQ_PENDING, true);
 		debug_put(LWIP_NCM_RECV_IRQ, false);
 		return;
 	}
@@ -39,11 +40,18 @@ void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_wor
 		panic("marker already set. how?");
 	}
 	_ncm_ethernet_instance->_marker = true;
+	debug_put(NCM_RECV_MARKER, true);
 
 	_ncm_ethernet_instance->_try_process_xmit_queue(NULL, NULL);
-	tud_network_recv_renew();
+	int limit = 10;
+	do {
+		_ncm_ethernet_instance->_tud_recv_cb_called = false;
+		limit--;
+		tud_network_recv_renew();
+	} while (_ncm_ethernet_instance->_tud_recv_cb_called && limit > 0);
 	_ncm_ethernet_instance->_try_process_xmit_queue(NULL, NULL);
 
+	debug_put(NCM_RECV_MARKER, false);
 	_ncm_ethernet_instance->_marker = false;
 	mutex_exit(&USB.mutex);
 	debug_put(LWIP_NCM_RECV_IRQ, false);

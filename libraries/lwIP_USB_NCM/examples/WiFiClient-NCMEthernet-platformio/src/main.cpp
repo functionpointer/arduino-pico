@@ -160,7 +160,7 @@ void loop() {
 
     // Close the connection
     //SER.println();
-    SER.println("closing connection");
+    SER.println(" closing connection");
     debug_put(CLIENT_STOP, true);
     client.stop();
     debug_put(CLIENT_STOP, false);

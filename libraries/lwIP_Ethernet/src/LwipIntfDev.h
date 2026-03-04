@@ -666,9 +666,6 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
         debug_put(ETHERNET_READFRAMEDATA, true);
         uint16_t len = RawDev::readFrameData((uint8_t*)pbuf->payload, tot_len);
         debug_put(ETHERNET_READFRAMEDATA, false);
-        if (does_contain_citation(pbuf)) {
-            debug_put(ETHERNET_LARGE_PACKET, true);
-        }
 #ifdef __FREERTOS
         xSemaphoreGive(_hwMutex);
 #endif
@@ -698,9 +695,6 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
 #endif
 
         if (err != ERR_OK) {
-            if (does_contain_citation(pbuf)) {
-                __breakpoint();
-            }
             debug_put(ETHERNET_PBUF_FREE, true);
             pbuf_free(pbuf);
             debug_put(ETHERNET_PBUF_FREE, false);
