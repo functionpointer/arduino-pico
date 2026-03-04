@@ -7,8 +7,8 @@
 #include <NCMEthernetlwIP.h>
 #include <USB.h>
 
-const char* host = "djxmmx.net";
-const uint16_t port = 17;
+const char* host = "www.govt.nz";
+const uint16_t port = 80;
 
 NCMEthernetlwIP eth;
 IPAddress my_static_ip_addr(192, 168, 137, 100);

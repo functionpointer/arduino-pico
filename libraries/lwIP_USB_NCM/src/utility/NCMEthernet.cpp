@@ -170,12 +170,14 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 }
 
 void NCMEthernet::discardFrame(uint16_t ign) {
+	debug_put(NCM_DISCARDFRAME, true);
 #ifdef __FREERTOS
 	ncmethernet_packet_t p;
     xQueueReceive(this->_recv_queue, &p, 0);
 #else
 	queue_try_remove(&this->_recv_queue, NULL);
 #endif
+	debug_put(NCM_DISCARDFRAME, false);
 }
 
 #ifdef __FREERTOS
@@ -211,7 +213,9 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	debug_put(NCM_SENDFRAME, true);
 	if(!queue_try_add(&_ncm_ethernet_instance->_xmit_queue, &p)) {
 		// queue full, drop packet
+		debug_put(NCM_SENDFRAME_QUEUE_FULL, true);
 		NCMEthernet::_try_process_xmit_queue(nullptr, nullptr);
+		debug_put(NCM_SENDFRAME_QUEUE_FULL, false);
 		return 0;
 	}
 	// tell lwip we are still using it
@@ -408,8 +412,10 @@ extern "C" {
 		} else {
 			// handlePackets has not taken the packet for some reason
 			// we can't leave the pointer in _recv_queue, as tinyusb will free or reeuse it after we return
+			debug_put(NCM_RECV_QUEUE_NOT_EMPTY, true);
 			while(queue_try_remove(&_ncm_ethernet_instance->_recv_queue, NULL)) {
 			}
+			debug_put(NCM_RECV_QUEUE_NOT_EMPTY, false);
 			// signal tinyusb that we couldn't get this packet processed. schedule worker to try again later
 			debug_put(NCM_RECV_IRQ_PENDING, true);
 			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
