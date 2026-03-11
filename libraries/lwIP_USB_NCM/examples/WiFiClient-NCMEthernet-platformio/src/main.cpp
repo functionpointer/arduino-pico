@@ -7,7 +7,7 @@
 #include <NCMEthernetlwIP.h>
 #include <USB.h>
 
-const char* host = "www.govt.nz";
+const char* host = "10.10.11.6";
 const uint16_t port = 80;
 
 NCMEthernetlwIP eth;

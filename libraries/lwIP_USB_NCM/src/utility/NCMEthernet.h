@@ -96,7 +96,7 @@ public:
     void usbInterfaceCB(int itf, uint8_t *dst, int len);
 
 #ifdef __FREERTOS
-	QueueHandle_t _recv_queue;
+	ncmethernet_packet_t *_recv_pkg = nullptr;
 	QueueHandle_t _xmit_queue;
 #else
 	queue_t _recv_queue;

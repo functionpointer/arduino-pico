@@ -36,9 +36,9 @@ bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
     memcpy(tud_network_mac_address, mac_address, 6);
 
 #ifdef __FREERTOS
-    _recv_queue = xQueueCreate(NCMETHERNET_RECV_QUEUE_LENGTH, sizeof(ncmethernet_packet_t));
-    if (!_recv_queue) {
-        panic("Unable to allocate NCMEthernet recv queue");
+    _xmit_queue = xQueueCreate(NCMETHERNET_XMIT_QUEUE_LENGTH, sizeof(struct pbuf*));
+    if (!_xmit_queue) {
+        panic("Unable to allocate NCMEthernet xmit queue");
     }
 #else
 	queue_init(&this->_recv_queue, sizeof(ncmethernet_packet_t), NCMETHERNET_RECV_QUEUE_LENGTH);
@@ -118,13 +118,13 @@ uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
 }
 
 uint16_t NCMEthernet::readFrameSize() {
-    ncmethernet_packet_t p;
 #ifdef __FREERTOS
-    if (!xQueuePeek(this->_recv_queue, &p, 0)) {
-        // no packet in queue
-        return 0;
-    }
+	if (this->_recv_pkg == nullptr) {
+		return 0;
+	}
+	return this->_recv_pkg->size;
 #else
+	ncmethernet_packet_t p;
 	if(!this->_marker) {
 		if(!queue_is_empty(&this->_recv_queue)) {
 			panic("recv_queue not empty but marker set");
@@ -135,17 +135,21 @@ uint16_t NCMEthernet::readFrameSize() {
 	if(!queue_try_peek(&this->_recv_queue, &p)) {
 		return 0;
 	}
-#endif
 	return p.size;
+#endif
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
-	ncmethernet_packet_t p;
 #ifdef __FREERTOS
-    if (!xQueueReceive(this->_recv_queue, &p, 0)) {
-        return 0;
-    }
+	if (this->_recv_pkg == nullptr) {
+		return 0;
+	}
+	memcpy(buffer, (const void*)this->_recv_pkg.src, min(framesize, p.size));
+	uint16_t ret = this->_recv_pkg->size;
+	this->_recv_pkg = nullptr;
+	return ret;
 #else
+	ncmethernet_packet_t p;
 	if(!this->_marker) {
 		if(!queue_is_empty(&this->_recv_queue)) {
 			panic("recv_queue not empty but marker set");
@@ -155,25 +159,17 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 	if(!queue_try_remove(&this->_recv_queue, &p)) {
 		return 0;
 	}
-#endif
+
   	memcpy(buffer, (const void*)p.src, min(framesize, p.size));
 	debug_put(NCM_RECV_LARGE_PACKET, false);
-
-#ifdef __FREERTOS
-	// do we need __get_freertos_mutex_for_ptr(&USB.mutex) for recv_renew?
-  	// in FreeRTOS we certainly could block to get it without an issue
-  	// just slower, might cause more task switches
-	tud_network_recv_renew();
+	return p.size;
 #endif
-
-    return p.size;
 }
 
 void NCMEthernet::discardFrame(uint16_t ign) {
 	debug_put(NCM_DISCARDFRAME, true);
 #ifdef __FREERTOS
-	ncmethernet_packet_t p;
-    xQueueReceive(this->_recv_queue, &p, 0);
+	this->_recv_pkg = nullptr;
 #else
 	queue_try_remove(&this->_recv_queue, NULL);
 #endif
@@ -183,13 +179,22 @@ void NCMEthernet::discardFrame(uint16_t ign) {
 #ifdef __FREERTOS
 uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// in case of freeRTOS we will be in the lwip task
-	// blocking get of __get_freertos_mutex_for_ptr(&USB.mutex)
-	// may block lwip task and thats ok, see tud_network_recv_cb()
-	CoreMutex m(&USB.mutex, false);
-	for (;;) {
-		/* if TinyUSB isn't ready, we must signal back to lwip that there is nothing we can do */
+	// we can't block to get usb mutex, as we may be called tud_network_recv_cb() via _call_handlepackets()
+	xQueueSend(this->_xmit_queue, p, 2);
+
+	if(xSemaphoreTake(__get_freertos_mutex_for_ptr(&USB.mutex), 0)) {
+		_process_xmit_queue();
+		xSemaphoreGive(__get_freertos_mutex_for_ptr(&USB.mutex));
+	}
+}
+void NCMEthernet::_process_xmit_queue() {
+	struct pbuf *p;
+	while(true) {
 		if (!tud_ready()) {
-			return 0;
+			return;
+		}
+		if(xQueueReceive(this->_xmit_queue, p, 0) != pdPASS) {
+			return;
 		}
 
 		/* if the network driver can accept another packet, we make it happen */
@@ -197,7 +202,8 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 			debug_put(TUD_NETWORK_XMIT, true);
 			tud_network_xmit(p, 0);
 			debug_put(TUD_NETWORK_XMIT, false);
-			return p->tot_len;
+
+			hmm problem here pbuf_free(p);
 		}
 
 		/* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
@@ -300,84 +306,14 @@ extern "C" {
 			// might be in freertosUSBTask(), might be in SerialUSB stuff, delay(), or something else
 			// however, we will be holding the non-recursive FreeRTOS Semaphore __get_freertos_mutex_for_ptr(&USB.mutex)
 			// also we won't be in IRQ context
-
-			// ultimately, we just want to call _ncm_ethernet_instance.getNetIf()->input()
-			// however, we can't do this directly as we are not in lwip task.
-			// furthermore, input() can cause answer packets to be created
-			// which lwip will end up sending by calling NCMEthernet::sendFrame()
-			// which would cause tud_network_xmit() to be called while in tud_network_recv_cb()
-			// probably cause a crash in tinyusb
-
-			// so we want to switch task to lwip
-			// we have two ways of doing that: either directly using lwip_wrap.cpp, where we could call ethernet_input()
-			// or by adding a receive queue and scheduling the lwip task to fetch it from there
-			// the former option is a deadlock
-			// as the wrapped functions block the current task to wait for a return value
-			// if answer packets are generated hey end up in sendFrame trying to get __get_freertos_mutex_for_ptr(&USB.mutex)
-			// but thats already held by this task which is blocked. thus deadlock
-
-			// a transmit queue could solve this. we would need to call pbuf_ref() to tell lwip that the pbuf is still in use
-			// so it doesn't get freed or reused after exiting sendFrame(). then pbuf_free().
-			// however, a full transmit queue would cause dropped frames which would waste the cpu time that created the packet
-
-			// Instead, we use a receive queue. dropped packets have barely been processed, so it is more efficient with cpu time
-			// sendFrame() will still try to get __get_freertos_mutex_for_ptr(&USB.mutex), but if that blocks lwip the system wont deadlock.
-			// Thats because this task can keep enqueueing packets to the receive queue without waiting for lwip.
-			// It will be finished eventually and drop __get_freertos_mutex_for_ptr(&USB.mutex).
-			// That will unblock lwip and allow it to send the answers.
-
-			// all this means after enqueueing we must get lwip task to fetch packets WITHOUT BLOCKING THIS TASK
-			// ideally we would want to do this:
-			// LWIPWork w;
-			// w.op = __callback;
-			// __callback_req req = { this->_lwipCallback, &this };
-			// w.req = &req;
-			// w.wakeup = 0;
-			// xQueueSend(__lwipQueue, &w, 0);
-			// not just nonblocking but also without yield, saving task switches when multiple packets are in tinyusb's buffer
-			// however, we can't do this because it breaches encapsulation of LwipIntfDev.h and freertos-lwip.cpp
-
-			// instead, we call _irq() to do almost the same thing
-
-			// technically, there is an even better option than a receive queue:
-			// just use __lwipQueue as the receive queue
-			// instead of specifying this->_lwipCallback we could specify the packet directly and a new __lwip_op
-			// but thats a bunch of hassle just for this specific use case and one extra queue isn't that expensive
-
-			// enqueue packet to recv queue without waiting for a response from lwip task
-			// lwip task may have same or lower priority than us
-			// so we allow ourselves to be blocked for a small amount of time to give lwip time to process the packets
-
-			ncmethernet_packet_t peek;
-			/*if(xQueuePeek(_ncm_ethernet_instance->_recv_queue, &peek, 0) == pdPASS) {
-				if(peek.src == src) {
-					__breakpoint();
-				}
-			}*/
-			if (!xQueueSend(_ncm_ethernet_instance->_recv_queue, &p, 2)) {
-					// if the time isn't enough we are overwhelmed so we drop the packet.
-					// should cause sender to slow down thanks to TCP
-
-					// blocking too long may cause USB to fail
-					// blocking too short may cause unnecessarily dropped packets
-					debug_put(NCM_TUD_NETWORK_RECV_CB, false);
-					return false;
+			if(_ncm_ethernet_instance->_recv_pkg != nullptr) {
+				panic("_recv_pkg not null");
 			}
-
-        // call _irq() to get lwip to fetch the packets
-
-        // calling _irq() this way is fragile
-        // it expects to be called from ISR context, but we call it from some random task context instead
-        // it will cause xQueueSendFromISR to be used, which isn't ideal from non-ISR context
-        // but IMPORTANTLY it won't block this task waiting for a response
-
-        // _irq() ends up writing to and enqueuing LwipIntfDev::_irqBuffer inside lwip_callback()
-        // normally that is safe as _irq() disables further interrupts until the lwip task as finished the callback
-        // however, that doesn't do anything in our case
-        // should be fine anyways as the data is always the same (LwipIntfDev<NCMEthernet>::_lwipCallback, _ncm_ethernet_instance)
-		NCMEthernetlwIP::_call_irq(nullptr, nullptr);
-		debug_put(NCM_TUD_NETWORK_RECV_CB, false);
-		return true;
+			_ncm_ethernet_instance->_recv_pkg = &p;
+			NCMEthernetlwIP::_call_handlepackets();
+			_ncm_ethernet_instance->_recv_pkg = nullptr;
+			tud_network_recv_renew();
+			return true;
 #else
 		// we may or may not be in irq context, as tud_task() is called by usbTaskIRQ but also plenty of libraries
 		// we should be holding &USB.mutex
