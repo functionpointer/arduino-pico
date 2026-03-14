@@ -35,16 +35,7 @@
 #include <pico/async_context_threadsafe_background.h>
 #endif
 
-#ifndef NCMETHERNET_RECV_QUEUE_LENGTH
-// tud_network_recv_cb relies on handlePackets to fetch data from the recv queue
-// for memory safety it has to flush any unhandled packets from the recv queue before returning
-// handlePackets will stop fetching after 10 packets.
-// it can also stop before that, when pbuf_alloc fails. 1 minimizes potential for lost packets
-#define NCMETHERNET_RECV_QUEUE_LENGTH 1
-#endif
-
 #ifndef NCMETHERNET_XMIT_QUEUE_LENGTH
-// only used on baremetal, not FreeRTOS
 #define NCMETHERNET_XMIT_QUEUE_LENGTH 12
 #endif
 
@@ -95,18 +86,22 @@ public:
 
     void usbInterfaceCB(int itf, uint8_t *dst, int len);
 
-#ifdef __FREERTOS
-	ncmethernet_packet_t *_recv_pkg = nullptr;
-	QueueHandle_t _xmit_queue;
-#else
-	queue_t _recv_queue;
-	queue_t _xmit_queue;
 	volatile bool _marker = false;
 	bool _tud_recv_cb_called = false;
+	ncmethernet_packet_t *_recv_pkg = nullptr;
+
+#ifdef __FREERTOS
+	SemaphoreHandle_t _recv_semaphore;
+	QueueHandle_t _xmit_queue;
+
+	TaskHandle_t _ncmTask;
+#else
+	queue_t _xmit_queue;
 
     async_when_pending_worker_t _recv_irq_worker;
-    void _try_process_xmit_queue(__unused async_context_t *context, __unused async_at_time_worker_t *worker);
 #endif
+	static void _set_recv_pending();
+	void _try_process_xmit_queue();
 protected:
     netif *_netif;
     uint8_t _id;

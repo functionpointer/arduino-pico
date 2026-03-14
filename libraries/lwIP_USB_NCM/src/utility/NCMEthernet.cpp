@@ -36,18 +36,18 @@ bool NCMEthernet::begin(const uint8_t* mac_address, netif *net) {
     memcpy(tud_network_mac_address, mac_address, 6);
 
 #ifdef __FREERTOS
-    _xmit_queue = xQueueCreate(NCMETHERNET_XMIT_QUEUE_LENGTH, sizeof(struct pbuf*));
-    if (!_xmit_queue) {
+    this->_xmit_queue = xQueueCreate(NCMETHERNET_XMIT_QUEUE_LENGTH, sizeof(struct pbuf*));
+	if (this->_xmit_queue == NULL) {
         panic("Unable to allocate NCMEthernet xmit queue");
     }
+	// creating _ncmTask is done in NCMEthernetlwIP
+	this->_recv_semaphore = xSemaphoreCreateCounting(10, 0);
 #else
-	queue_init(&this->_recv_queue, sizeof(ncmethernet_packet_t), NCMETHERNET_RECV_QUEUE_LENGTH);
 	queue_init(&this->_xmit_queue, sizeof(struct pbuf*), NCMETHERNET_XMIT_QUEUE_LENGTH);
 
-	// calls this->handlePacket() to fetch packets from _recv_queue
     this->_recv_irq_worker.user_data = this;
 	// this->_recv_irq_worker.do_work will be set by NCMEthernetlwIP
-	// can't do that here because it has to call _irq() which isn't defined in this class yet
+	// can't do that here because it has to call functions in LwipIntfDev
 	async_context_add_when_pending_worker(__getEthernetContext(), &this->_recv_irq_worker);
 #endif
 
@@ -118,109 +118,44 @@ uint16_t NCMEthernet::readFrame(uint8_t* buffer, uint16_t bufsize) {
 }
 
 uint16_t NCMEthernet::readFrameSize() {
-#ifdef __FREERTOS
-	if (this->_recv_pkg == nullptr) {
+	if (!this->_marker || this->_recv_pkg == nullptr) {
 		return 0;
 	}
 	return this->_recv_pkg->size;
-#else
-	ncmethernet_packet_t p;
-	if(!this->_marker) {
-		if(!queue_is_empty(&this->_recv_queue)) {
-			panic("recv_queue not empty but marker set");
-		}
-		async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
-		return 0;
-	}
-	if(!queue_try_peek(&this->_recv_queue, &p)) {
-		return 0;
-	}
-	return p.size;
-#endif
 }
 
 uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
-#ifdef __FREERTOS
 	if (this->_recv_pkg == nullptr) {
 		return 0;
 	}
-	memcpy(buffer, (const void*)this->_recv_pkg.src, min(framesize, p.size));
-	uint16_t ret = this->_recv_pkg->size;
+	auto size = min(this->_recv_pkg->size, framesize);
+	memcpy(buffer, (const void*)this->_recv_pkg->src, size);
 	this->_recv_pkg = nullptr;
-	return ret;
-#else
-	ncmethernet_packet_t p;
-	if(!this->_marker) {
-		if(!queue_is_empty(&this->_recv_queue)) {
-			panic("recv_queue not empty but marker set");
-		}
-		return 0;
-	}
-	if(!queue_try_remove(&this->_recv_queue, &p)) {
-		return 0;
-	}
-
-  	memcpy(buffer, (const void*)p.src, min(framesize, p.size));
-	debug_put(NCM_RECV_LARGE_PACKET, false);
-	return p.size;
-#endif
+	return size;
 }
 
 void NCMEthernet::discardFrame(uint16_t ign) {
 	debug_put(NCM_DISCARDFRAME, true);
-#ifdef __FREERTOS
 	this->_recv_pkg = nullptr;
-#else
-	queue_try_remove(&this->_recv_queue, NULL);
-#endif
 	debug_put(NCM_DISCARDFRAME, false);
 }
 
-#ifdef __FREERTOS
-uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
-	// in case of freeRTOS we will be in the lwip task
-	// we can't block to get usb mutex, as we may be called tud_network_recv_cb() via _call_handlepackets()
-	xQueueSend(this->_xmit_queue, p, 2);
-
-	if(xSemaphoreTake(__get_freertos_mutex_for_ptr(&USB.mutex), 0)) {
-		_process_xmit_queue();
-		xSemaphoreGive(__get_freertos_mutex_for_ptr(&USB.mutex));
-	}
-}
-void NCMEthernet::_process_xmit_queue() {
-	struct pbuf *p;
-	while(true) {
-		if (!tud_ready()) {
-			return;
-		}
-		if(xQueueReceive(this->_xmit_queue, p, 0) != pdPASS) {
-			return;
-		}
-
-		/* if the network driver can accept another packet, we make it happen */
-		if (tud_network_can_xmit(p->tot_len)) {
-			debug_put(TUD_NETWORK_XMIT, true);
-			tud_network_xmit(p, 0);
-			debug_put(TUD_NETWORK_XMIT, false);
-
-			hmm problem here pbuf_free(p);
-		}
-
-		/* transfer execution to TinyUSB in the hopes that it will finish transmitting the prior packet */
-		tud_task();
-	}
-}
-#else
-volatile static int xmitpkgcount = 0;
 uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// in case of baremetal we are probably in IRQ context
 	// we should be holding lwip mutex
 	// maybe also USB mutex if we were called by NCMEthernetlwIP::_call_irq (i.e. p is an answer packet)
 	debug_put(NCM_SENDFRAME, true);
+	if(p == nullptr) {
+		__breakpoint();
+	}
+#ifdef __FREERTOS
+	if(xQueueSend(this->_xmit_queue, &p, 2) != pdPASS) {
+#else
 	if(!queue_try_add(&_ncm_ethernet_instance->_xmit_queue, &p)) {
+#endif
 		// queue full, drop packet
 		debug_put(NCM_SENDFRAME_QUEUE_FULL, true);
-		NCMEthernet::_try_process_xmit_queue(nullptr, nullptr);
+		this->_try_process_xmit_queue();
 		debug_put(NCM_SENDFRAME_QUEUE_FULL, false);
 		return 0;
 	}
@@ -230,55 +165,94 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// USB mutex is probably free, so we call _try_process_xmit_queue
 	// it tries to get the mutex and will send send all packets from the queue
 	uint16_t ret = p->tot_len;
-	NCMEthernet::_try_process_xmit_queue(nullptr, nullptr);
+	this->_try_process_xmit_queue();
 	debug_put(NCM_SENDFRAME, false);
 	return ret;
 }
 
-void NCMEthernet::_try_process_xmit_queue(__unused async_context_t *context, __unused async_at_time_worker_t *worker) {
-	NCMEthernet *me = _ncm_ethernet_instance;
+void NCMEthernet::_try_process_xmit_queue() {
+	NCMEthernet *me = this;
 
 	bool has_usb_mutex = false;
 	if (!me->_marker) {
+#ifdef __FREERTOS
+		debug_put(NCM_RECV_IRQ_PENDING, true);
+		NCMEthernet::_set_recv_pending();
+		return;
+#else
 		if(mutex_try_enter(&USB.mutex, NULL)) {
 			has_usb_mutex = true;
 		} else {
 			debug_put(NCM_RECV_IRQ_PENDING, true);
-			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
+			NCMEthernet::_set_recv_pending();
 			return;
 		}
+#endif
 	}
 
-	struct pbuf *p;
+	struct pbuf *p = nullptr;
 	while(true) {
 		if(!tud_ready()) {
 			break;
 		}
+#ifdef __FREERTOS
+		if(xQueuePeek(me->_xmit_queue, &p, 0) != pdPASS) {
+			break;
+		}
+		if(p == nullptr) {
+			panic("null in queue?");
+		}
+#else
 		if(!queue_try_peek(&me->_xmit_queue, &p)) {
 			break;
 		}
+#endif
 		if(tud_network_can_xmit(p->tot_len)) {
 			debug_put(TUD_NETWORK_XMIT, true);
 			tud_network_xmit(p, 0);
 			debug_put(TUD_NETWORK_XMIT, false);
+#ifdef __FREERTOS
+			struct pbuf *removed = nullptr;
+			if (xQueueReceive(me->_xmit_queue, &removed, 0) != pdPASS) {
+#else
 			if (!queue_try_remove(&me->_xmit_queue, nullptr)) {
+#endif
 				panic("couldn't remove packet from queue after transmitting");
 			}
+#ifdef __FREERTOS
+			if(removed != p) {
+				panic("different packet removed");
+			}
+			if(p == nullptr) {
+				panic("packet is null?");
+			}
+#endif
 			pbuf_free(p);
 		}
 		tud_task();
 	}
 
+#ifdef __FREERTOS
+	if(uxQueueMessagesWaiting(me->_xmit_queue) > 0) {
+#else
 	if(!queue_is_empty(&me->_xmit_queue)) {
+#endif
 		debug_put(NCM_RECV_IRQ_PENDING, true);
-		async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
+		NCMEthernet::_set_recv_pending();
 	}
 
 	if(has_usb_mutex) {
 		mutex_exit(&USB.mutex);
 	}
 }
+
+void NCMEthernet::_set_recv_pending() {
+#ifdef __FREERTOS
+	xSemaphoreGive(_ncm_ethernet_instance->_recv_semaphore);
+#else
+	async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
 #endif
+}
 
 extern "C" {
     // data transfer between tinyUSB callbacks and NCMEthernet class
@@ -293,27 +267,19 @@ extern "C" {
     }
 
     bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-			if (_ncm_ethernet_instance == nullptr) {
-					debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
-					return false;
-			}
-			debug_put(NCM_TUD_NETWORK_RECV_CB, true);
-			ncmethernet_packet_t p;
-			p.src = src;
-			p.size = size;
+		if (_ncm_ethernet_instance == nullptr) {
+				debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
+				return false;
+		}
+		debug_put(NCM_TUD_NETWORK_RECV_CB, true);
+		ncmethernet_packet_t p;
+		p.src = src;
+		p.size = size;
 #ifdef __FREERTOS
-			// we get called as part of tud_task() from somewhere
-			// might be in freertosUSBTask(), might be in SerialUSB stuff, delay(), or something else
-			// however, we will be holding the non-recursive FreeRTOS Semaphore __get_freertos_mutex_for_ptr(&USB.mutex)
-			// also we won't be in IRQ context
-			if(_ncm_ethernet_instance->_recv_pkg != nullptr) {
-				panic("_recv_pkg not null");
-			}
-			_ncm_ethernet_instance->_recv_pkg = &p;
-			NCMEthernetlwIP::_call_handlepackets();
-			_ncm_ethernet_instance->_recv_pkg = nullptr;
-			tud_network_recv_renew();
-			return true;
+		// we get called as part of tud_task() from somewhere
+		// might be in freertosUSBTask(), might be in SerialUSB stuff, delay(), or something else
+		// however, we will be holding the non-recursive FreeRTOS Semaphore __get_freertos_mutex_for_ptr(&USB.mutex)
+		// also we won't be in IRQ context
 #else
 		// we may or may not be in irq context, as tud_task() is called by usbTaskIRQ but also plenty of libraries
 		// we should be holding &USB.mutex
@@ -322,44 +288,32 @@ extern "C" {
 		// this means in IRQ context acquiring lwip mutex will always succeed
 		// so we sidestep this issue with "marker", which is only set and cleared by _call_irq()
 		// and only while holding both mutexes. i.e. if marker==true we can safely call handlePackets
+#endif
 
 		if(!_ncm_ethernet_instance->_marker) {
 			// not in lwip, can't call pbuf_alloc inside handlePackets safely.
 			debug_put(NCM_RECV_IRQ_PENDING, true);
 			debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
 			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
-			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
+			NCMEthernet::_set_recv_pending();
 			return false;
 		}
 		_ncm_ethernet_instance->_tud_recv_cb_called = true;
 
-		try_again:
-		bool added = queue_try_add(&_ncm_ethernet_instance->_recv_queue, &p);
+		if (_ncm_ethernet_instance->_recv_pkg != nullptr) {
+			panic("_recv_pkg should be null");
+		}
 
+		_ncm_ethernet_instance->_recv_pkg = &p;
 		static_cast<NCMEthernetlwIP*>(_ncm_ethernet_instance)->_call_handlepackets();
-
-		if(queue_is_empty(&_ncm_ethernet_instance->_recv_queue)) {
-			if(!added) {
-				goto try_again;
-			}
-			debug_put(NCM_TUD_NETWORK_RECV_FALSE, false);
-			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
-			return true;
-		} else {
-			// handlePackets has not taken the packet for some reason
-			// we can't leave the pointer in _recv_queue, as tinyusb will free or reeuse it after we return
-			debug_put(NCM_RECV_QUEUE_NOT_EMPTY, true);
-			while(queue_try_remove(&_ncm_ethernet_instance->_recv_queue, NULL)) {
-			}
-			debug_put(NCM_RECV_QUEUE_NOT_EMPTY, false);
-			// signal tinyusb that we couldn't get this packet processed. schedule worker to try again later
-			debug_put(NCM_RECV_IRQ_PENDING, true);
-			async_context_set_work_pending(__getEthernetContext(), &_ncm_ethernet_instance->_recv_irq_worker);
-			debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
-			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
+		if (_ncm_ethernet_instance->_recv_pkg != nullptr) {
+			// handlePackets didn't take the packet for some reason
+			_ncm_ethernet_instance->_recv_pkg = nullptr;
+			NCMEthernet::_set_recv_pending();
 			return false;
 		}
-#endif
+		_ncm_ethernet_instance->_recv_pkg = nullptr;
+		return true;
     }
 
     uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
