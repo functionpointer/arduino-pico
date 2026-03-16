@@ -309,10 +309,13 @@ extern "C" {
 		if (_ncm_ethernet_instance->_recv_pkg != nullptr) {
 			// handlePackets didn't take the packet for some reason
 			_ncm_ethernet_instance->_recv_pkg = nullptr;
+			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
+			debug_put(NCM_RECV_IRQ_PENDING, true);
 			NCMEthernet::_set_recv_pending();
 			return false;
 		}
 		_ncm_ethernet_instance->_recv_pkg = nullptr;
+		debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 		return true;
     }
 

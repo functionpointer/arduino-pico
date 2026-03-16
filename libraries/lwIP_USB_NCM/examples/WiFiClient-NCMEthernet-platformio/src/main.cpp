@@ -14,7 +14,7 @@ NCMEthernetlwIP eth;
 IPAddress my_static_ip_addr(192, 168, 137, 100);
 IPAddress my_static_gateway_and_dns_addr(192, 168, 137, 1);
 
-#define USE_REAL_UART
+// #define USE_REAL_UART
 
 #if defined(USE_REAL_UART)
 #define SER Serial1
@@ -154,8 +154,9 @@ void loop() {
         debug_put(CLIENT_READ, true);
         char ch = static_cast<char>(client.read());
         debug_put(CLIENT_READ, false);
-        if(i++<10)
+        if(i++<10) {
             SER.print(ch);
+        }
     }
 
     // Close the connection
