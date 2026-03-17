@@ -20,6 +20,7 @@
 #ifndef NCM_ETHERNET_H
 #define NCM_ETHERNET_H
 
+#include <tusb-ncm.h>
 #include <stdint.h>
 #include <Arduino.h>
 #include <SPI.h>

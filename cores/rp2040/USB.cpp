@@ -673,13 +673,6 @@ extern "C" void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_r
     (void) bufsize;
 }
 
-extern "C" bool tud_network_recv_cb(const uint8_t *src, uint16_t size) __attribute__((weak));
-extern "C" bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-    (void) src;
-    (void) size;
-    return false;
-}
-
 #ifdef ENABLE_PICOTOOL_USB
 // Support for Microsoft OS 2.0 descriptor
 #define BOS_TOTAL_LEN      (TUD_BOS_DESC_LEN + TUD_BOS_MICROSOFT_OS_DESC_LEN)
