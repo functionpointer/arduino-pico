@@ -222,6 +222,9 @@
                      "name": "iLabs Challenger 2350 BConnect"
                   },
                   {
+                     "name": "iLabs Challenger 2350 NB-IoT"
+                  },
+                  {
                      "name": "Makerbase MKS THR36"
                   },
                   {
@@ -264,6 +267,9 @@
                      "name": "Olimex RP2040-Pico30"
                   },
                   {
+                     "name": "PicoLume Transceiver"
+                  },
+                  {
                      "name": "Pimoroni PGA2040"
                   },
                   {
@@ -280,6 +286,9 @@
                   },
                   {
                      "name": "Pimoroni Plasma2350"
+                  },
+                  {
+                     "name": "Pimoroni Plasma2350W"
                   },
                   {
                      "name": "Pimoroni Servo2040"
@@ -378,6 +387,9 @@
                      "name": "Waveshare RP2040 One"
                   },
                   {
+                     "name": "Waveshare RP2040 LoRa"
+                  },
+                  {
                      "name": "Waveshare RP2040 Matrix"
                   },
                   {
@@ -400,6 +412,9 @@
                   },
                   {
                      "name": "Waveshare RP2350 Plus"
+                  },
+                  {
+                     "name": "Waveshare RP2350B Plus W"
                   },
                   {
                      "name": "Waveshare RP2350 LCD 0.96"

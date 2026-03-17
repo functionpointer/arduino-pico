@@ -66,12 +66,14 @@ static void _cyw43_hal_generate_laa_mac(__unused int idx, uint8_t buf[6]) {
 }
 
 
-
+#ifndef ETHERNET_LINK_STATUS_ENUM
 enum EthernetLinkStatus {
     Unknown,
     LinkON,
     LinkOFF
 };
+#define ETHERNET_LINK_STATUS_ENUM
+#endif
 
 #include <lwip_wrap.h>
 
@@ -236,7 +238,7 @@ u8_t LwipIntfDev<RawDev>::_pingCB(void *arg, struct raw_pcb *pcb, struct pbuf *p
     if (p->len > 20) {
         iecho = (struct icmp_echo_hdr *)((uint8_t*)p->payload + 20);
         if ((iecho->id == w->_ping_id) && (iecho->seqno == htons(w->_ping_seq_num))) {
-            w->_ping_ttl = pcb->ttl;
+            w->_ping_ttl = ip4_current_header()->_ttl;
             pbuf_free(p);
             return 1; // We've processed it
         }

@@ -23,6 +23,7 @@
 #include <Arduino.h>
 #include "api/HardwareSerial.h"
 #include "CoreMutex.h"
+#include "LocklessQueue.h"
 
 extern "C" typedef struct uart_inst uart_inst_t;
 
@@ -86,9 +87,6 @@ public:
         (void) unused;
     }
 
-    // Not to be called by users, only from the IRQ handler.  In public so that the C-language IQR callback can access it
-    void _handleIRQ(bool inIRQ = true);
-
     // Allows the user to sleep until a break is received (self-clears the flag
     // on read)
     bool getBreakReceived();
@@ -99,6 +97,10 @@ public:
     }
 
 private:
+    static void _uart0IRQ();
+    static void _uart1IRQ();
+    void _handleIRQ(bool inIRQ = true);
+
     bool _running = false;
     uart_inst_t *_uart;
     pin_size_t _tx, _rx;
@@ -112,11 +114,8 @@ private:
     bool _break;
     bool _invertTX, _invertRX, _invertControl;
 
-    // Lockless, IRQ-handled circular queue
-    uint32_t _writer;
-    uint32_t _reader;
+    LocklessQueue<uint8_t> *_queue;
     size_t   _fifoSize = 32;
-    uint8_t *_queue;
     mutex_t  _fifoMutex; // Only needed when non-IRQ updates _writer
     void _pumpFIFO(); // User space FIFO transfer
 };

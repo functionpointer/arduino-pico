@@ -65,8 +65,9 @@ Read the [Contributing Guide](https://github.com/earlephilhower/arduino-pico/blo
 * Invector Labs Challenger RP2040 SubGHz
 * Invector Labs Challenger RP2040 SD/RTC
 * Invector Labs Challenger RP2040 UWB
-* Invector Labs Challenger RP2350 BConnect
-* Invector Labs Challenger RP2350 WiFi/BLE
+* Invector Labs Challenger+ RP2350 BConnect
+* Invector Labs Challenger+ RP2350 WiFi/BLE
+* Invector Labs Challenger+ RP2350 NB-IoT
 * Invector Labs RPICO32
 * Melopero Cookie RP2040
 * Melopero Shake RP2040
@@ -80,11 +81,13 @@ Read the [Contributing Guide](https://github.com/earlephilhower/arduino-pico/blo
 * Olimex Pico2XL
 * Olimex Pico2XXL
 * Olimex RP2040-Pico30
+* PicoLume Transceiver
 * Pimoroni PGA2040
 * Pimoroni Pico Plus 2
 * Pimoroni Pico Plus 2W
 * Pimoroni Plasma2040
 * Pimoroni Plasma2350
+* Pimoroni Plasma2350W
 * Pimoroni Servo2040
 * Pimoroni Tiny2040
 * Pimoroni Tiny2350
@@ -116,11 +119,13 @@ Read the [Contributing Guide](https://github.com/earlephilhower/arduino-pico/blo
 * Waveshare RP2040 Plus
 * Waveshare RP2040 LCD 0.96
 * Waveshare RP2040 LCD 1.28
+* Waveshare RP2040 LoRa
 * Waveshare RP2040 Matrix
 * Waveshare RP2040 PiZero
 * Waveshare RP2350 Zero
 * Waveshare RP2350 PiZero
 * Waveshare RP2350 Plus
+* Waveshare RP2350 Plus W
 * Waveshare RP2350 LCD 0.96
 * WIZnet W5100S-EVB-Pico
 * WIZnet W5100S-EVB-Pico2
@@ -218,17 +223,25 @@ Type "pico" in the search box and select "Add":
 If Win32 long paths are not enabled, and `git` not configured to use them then there
 may be errors when attempting to clone the submodules.
 
-To install via GIT (for latest and greatest versions):
+To install via GIT (for latest and greatest versions) under Linux or Mac:
 ````
 mkdir -p ~/Arduino/hardware/pico
 git clone https://github.com/earlephilhower/arduino-pico.git ~/Arduino/hardware/pico/rp2040
 cd ~/Arduino/hardware/pico/rp2040
-git submodule update --init
-cd pico-sdk
-git submodule update --init
-cd ../tools
+git submodule update --init --recursive
+cd tools
 python3 ./get.py
 `````
+
+For Windows, you need have Python already installed and git clone in a different path:
+````
+mkdir %USERPROFILE%\Documents\Arduino\hardware\pico
+git clone https://github.com/earlephilhower/arduino-pico.git %USERPROFILE%\Documents\Arduino\hardware\pico\rp2040
+cd %USERPROFILE%\Documents\Arduino\hardware\pico\rp2040
+git submodule update --init --recursive
+cd tools
+python .\get.py
+````
 
 # Uploading Sketches
 To upload your first sketch, you will need to hold the BOOTSEL button down while plugging in the Pico to your computer.

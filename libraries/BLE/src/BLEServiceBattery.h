@@ -1,7 +1,6 @@
 /*
-    Bluetooth lock helper class
-
-    Copyright (c) 2024 Earle F. Philhower, III <earlephilhower@yahoo.com>
+    BLEServiceBattery - Implements a simple battery service
+    Copyright (c) 2026 Earle F. Philhower, III.  All rights reserved.
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -18,17 +17,18 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+
 #pragma once
 
 #include <_needsbt.h>
 #include <Arduino.h>
+#include "BLEService.h"
 
-class BluetoothLock {
+class BLEServiceBattery : public BLEService {
 public:
-    BluetoothLock() {
-        __lockBluetooth();
-    }
-    ~BluetoothLock() {
-        __unlockBluetooth();
-    }
+    BLEServiceBattery();
+    virtual ~BLEServiceBattery();
+    void set(int lvl);
+private:
+    BLECharacteristic *_battLevel;
 };

@@ -41,11 +41,11 @@ public:
 
     static const uint32_t speaker_cod = 0x200000 | 0x040000 | 0x000400;  // Service Class: Rendering | Audio, Major Device Class: Audio
     static const uint32_t any_cod = 0;
-    std::vector<BTDeviceInfo> scan(uint32_t mask, int scanTimeSec = 5, bool async = false);
+    std::vector<BTDeviceInfo> scan(uint32_t mask, int scanTimeSec = 5, bool async = false, void (*idleFcn)(void *) = nullptr, void *idleFcnData = nullptr);
     bool scanAsyncDone();
     std::vector<BTDeviceInfo> scanAsyncResult();
 
-    std::vector<BTDeviceInfo> scanBLE(uint32_t uuid, int scanTimeSec = 5);
+    std::vector<BTDeviceInfo> scanBLE(uint32_t uuid, int scanTimeSec = 5, void (*idleFcn)(void *) = nullptr, void *idleFcnData = nullptr);
 
     void scanFree(); // Free allocated scan buffers
 
@@ -62,6 +62,9 @@ protected:
     void setPairOnMeta(bool v) {
         _smPair = v;
     }
+    void setDisconnectCB(void (*fn)()) {
+        _disconnectCB = fn;
+    }
 
 private:
     void hci_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
@@ -74,6 +77,7 @@ private:
     enum { MAX_DEVICES_TO_DISCOVER = 32 };
     std::vector<BTDeviceInfo> _btdList;
     volatile bool _scanning = false;
+    BTDeviceInfo *_requested; // BTClassic name request
     bool _running = false;
 
     // BLE specific
@@ -81,4 +85,5 @@ private:
     void parse_advertisement_data(uint8_t *packet);
     volatile hci_con_handle_t _hciConn = HCI_CON_HANDLE_INVALID;
     bool _smPair = false;
+    void (*_disconnectCB)() = nullptr;
 };
