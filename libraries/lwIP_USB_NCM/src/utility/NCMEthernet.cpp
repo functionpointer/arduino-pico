@@ -139,16 +139,13 @@ uint16_t NCMEthernet::readFrameData(uint8_t* buffer, uint16_t framesize) {
 }
 
 void NCMEthernet::discardFrame(uint16_t ign) {
-	debug_put(NCM_DISCARDFRAME, true);
 	this->_recv_pkg = nullptr;
-	debug_put(NCM_DISCARDFRAME, false);
 }
 
 uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// in case of baremetal we are probably in IRQ context
 	// we should be holding lwip mutex
 	// maybe also USB mutex if we were called by NCMEthernetlwIP::_call_irq (i.e. p is an answer packet)
-	debug_put(NCM_SENDFRAME, true);
 	if(p == nullptr) {
 		__breakpoint();
 	}
@@ -158,9 +155,7 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	if(!queue_try_add(&_ncm_ethernet_instance->_xmit_queue, &p)) {
 #endif
 		// queue full, drop packet
-		debug_put(NCM_SENDFRAME_QUEUE_FULL, true);
 		this->_try_process_xmit_queue();
-		debug_put(NCM_SENDFRAME_QUEUE_FULL, false);
 		return 0;
 	}
 	// tell lwip we are still using it
@@ -170,7 +165,6 @@ uint16_t NCMEthernet::sendFrame(struct pbuf *p) {
 	// it tries to get the mutex and will send send all packets from the queue
 	uint16_t ret = p->tot_len;
 	this->_try_process_xmit_queue();
-	debug_put(NCM_SENDFRAME, false);
 	return ret;
 }
 
@@ -180,14 +174,12 @@ void NCMEthernet::_try_process_xmit_queue() {
 	bool has_usb_mutex = false;
 	if (!me->_marker) {
 #ifdef __FREERTOS
-		debug_put(NCM_RECV_IRQ_PENDING, true);
 		NCMEthernet::_set_recv_pending();
 		return;
 #else
 		if(mutex_try_enter(&USB.mutex, NULL)) {
 			has_usb_mutex = true;
 		} else {
-			debug_put(NCM_RECV_IRQ_PENDING, true);
 			NCMEthernet::_set_recv_pending();
 			return;
 		}
@@ -212,9 +204,7 @@ void NCMEthernet::_try_process_xmit_queue() {
 		}
 #endif
 		if(tud_network_can_xmit(p->tot_len)) {
-			debug_put(TUD_NETWORK_XMIT, true);
 			tud_network_xmit(p, 0);
-			debug_put(TUD_NETWORK_XMIT, false);
 #ifdef __FREERTOS
 			struct pbuf *removed = nullptr;
 			if (xQueueReceive(me->_xmit_queue, &removed, 0) != pdPASS) {
@@ -241,7 +231,6 @@ void NCMEthernet::_try_process_xmit_queue() {
 #else
 	if(!queue_is_empty(&me->_xmit_queue)) {
 #endif
-		debug_put(NCM_RECV_IRQ_PENDING, true);
 		NCMEthernet::_set_recv_pending();
 	}
 
@@ -272,10 +261,8 @@ extern "C" {
 
     bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
 		if (_ncm_ethernet_instance == nullptr) {
-				debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
 				return false;
 		}
-		debug_put(NCM_TUD_NETWORK_RECV_CB, true);
 		ncmethernet_packet_t p;
 		p.src = src;
 		p.size = size;
@@ -296,9 +283,6 @@ extern "C" {
 
 		if(!_ncm_ethernet_instance->_marker) {
 			// not in lwip, can't call pbuf_alloc inside handlePackets safely.
-			debug_put(NCM_RECV_IRQ_PENDING, true);
-			debug_put(NCM_TUD_NETWORK_RECV_FALSE, true);
-			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 			NCMEthernet::_set_recv_pending();
 			return false;
 		}
@@ -313,13 +297,10 @@ extern "C" {
 		if (_ncm_ethernet_instance->_recv_pkg != nullptr) {
 			// handlePackets didn't take the packet for some reason
 			_ncm_ethernet_instance->_recv_pkg = nullptr;
-			debug_put(NCM_TUD_NETWORK_RECV_CB, false);
-			debug_put(NCM_RECV_IRQ_PENDING, true);
 			NCMEthernet::_set_recv_pending();
 			return false;
 		}
 		_ncm_ethernet_instance->_recv_pkg = nullptr;
-		debug_put(NCM_TUD_NETWORK_RECV_CB, false);
 		return true;
     }
 

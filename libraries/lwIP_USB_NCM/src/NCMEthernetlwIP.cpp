@@ -45,8 +45,6 @@ void NCMEthernetlwIP::_call_irq(void *cbData) {
 #else
 void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_worker_t *worker) {
 #endif
-	debug_put(LWIP_NCM_RECV_IRQ, true);
-	debug_put(NCM_RECV_IRQ_PENDING, false);
 #ifdef __FREERTOS
 	CoreMutex m(&USB.mutex);
 	// in freertos we can afford to block, as long as no other code uses usb and lwip at the same time
@@ -55,8 +53,6 @@ void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_wor
 		// couldn't get usb mutex, try again later
 		// we can't block here as that would be a deadlock as we are in irq context (_recv_irq_worker)
 		worker->work_pending = true;
-		debug_put(NCM_RECV_IRQ_PENDING, true);
-		debug_put(LWIP_NCM_RECV_IRQ, false);
 		return;
 	}
 #endif
@@ -65,7 +61,6 @@ void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_wor
 		panic("marker already set. how?");
 	}
 	_ncm_ethernet_instance->_marker = true;
-	debug_put(NCM_RECV_MARKER, true);
 
 	_ncm_ethernet_instance->_try_process_xmit_queue();
 	int limit = 10;
@@ -77,13 +72,11 @@ void NCMEthernetlwIP::_call_irq(async_context_t *context, async_when_pending_wor
 	} while (_ncm_ethernet_instance->_tud_recv_cb_called && limit > 0);
 	_ncm_ethernet_instance->_try_process_xmit_queue();
 
-	debug_put(NCM_RECV_MARKER, false);
 	_ncm_ethernet_instance->_marker = false;
 #ifdef __FREERTOS
 #else
 	mutex_exit(&USB.mutex);
 #endif
-	debug_put(LWIP_NCM_RECV_IRQ, false);
 }
 
 void NCMEthernetlwIP::_call_handlepackets() {

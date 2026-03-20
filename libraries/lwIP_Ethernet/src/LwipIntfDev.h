@@ -609,28 +609,21 @@ void LwipIntfDev<RawDev>::check_route() {
 template<class RawDev>
 err_t LwipIntfDev<RawDev>::handlePackets() {
     int pkt = 0;
-	debug_put(ETHERNET_HANDLEPACKETS, true);
     while (1) {
         if (++pkt == 10)
             // prevent starvation
         {
-			debug_put(ETHERNET_HANDLEPACKETS, false);
-            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_OK;
         }
 
 #ifdef __FREERTOS
         xSemaphoreTake(_hwMutex, portMAX_DELAY);
 #endif
-        debug_put(ETHERNET_READFRAMESIZE, true);
         uint16_t tot_len = RawDev::readFrameSize();
-        debug_put(ETHERNET_READFRAMESIZE, false);
             if (!tot_len) {
 #ifdef __FREERTOS
             xSemaphoreGive(_hwMutex);
 #endif
-			debug_put(ETHERNET_HANDLEPACKETS, false);
-            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_OK;
         }
 
@@ -642,32 +635,22 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
         // guarantying to deliver a continuous chunk of memory.
         // TODO: tweak the wiznet driver to allow copying partial chunk
         //       of received data and use PBUF_POOL.
-        debug_put(ETHERNET_PBUF_ALLOC, true);
         pbuf* pbuf = pbuf_alloc(PBUF_RAW, tot_len, PBUF_RAM);
-        debug_put(ETHERNET_PBUF_ALLOC, false);
         if (!pbuf || pbuf->len < tot_len) {
             if (pbuf) {
-                debug_put(ETHERNET_PBUF_FREE, true);
                 pbuf_free(pbuf);
-                debug_put(ETHERNET_PBUF_FREE, false);
             }
-            debug_put(ETHERNET_DISCARDFRAME, true);
             RawDev::discardFrame(tot_len);
-            debug_put(ETHERNET_DISCARDFRAME, false);
 #ifdef __FREERTOS
             xSemaphoreGive(_hwMutex);
 #endif
-			debug_put(ETHERNET_HANDLEPACKETS, false);
-            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_BUF;
         }
         if (pbuf->len > tot_len) {
             __breakpoint();
         }
 
-        debug_put(ETHERNET_READFRAMEDATA, true);
         uint16_t len = RawDev::readFrameData((uint8_t*)pbuf->payload, tot_len);
-        debug_put(ETHERNET_READFRAMEDATA, false);
 #ifdef __FREERTOS
         xSemaphoreGive(_hwMutex);
 #endif
@@ -676,18 +659,12 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
             // tot_len is given by readFrameSize()
             // and is supposed to be honoured by readFrameData()
             // todo: ensure this test is unneeded, remove the print
-            debug_put(ETHERNET_PBUF_FREE, true);
             pbuf_free(pbuf);
-            debug_put(ETHERNET_PBUF_FREE, false);
-			debug_put(ETHERNET_HANDLEPACKETS, false);
-            debug_put(ETHERNET_LARGE_PACKET, false);
             return ERR_BUF;
         }
 
         _packetsReceived++;
-        debug_put(ETHERNET_NETIF_INPUT, true);
         err_t err = _netif.input(pbuf, &_netif);
-        debug_put(ETHERNET_NETIF_INPUT, false);
 
 #if PHY_HAS_CAPTURE
         if (phy_capture) {
@@ -697,17 +674,11 @@ err_t LwipIntfDev<RawDev>::handlePackets() {
 #endif
 
         if (err != ERR_OK) {
-            debug_put(ETHERNET_PBUF_FREE, true);
             pbuf_free(pbuf);
-            debug_put(ETHERNET_PBUF_FREE, false);
-			debug_put(ETHERNET_HANDLEPACKETS, false);
-            debug_put(ETHERNET_LARGE_PACKET, false);
             return err;
         }
         // (else) allocated pbuf is now lwIP's responsibility
     }
-	debug_put(ETHERNET_HANDLEPACKETS, false);
-    debug_put(ETHERNET_LARGE_PACKET, false);
 }
 
 template<class RawDev>

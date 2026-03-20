@@ -244,16 +244,13 @@ static void ethernetTask(void *param) {
 #else
 // This will only be called under the protection of the async context mutex, so no re-entrancy checks needed
 static void ethernet_timeout_reached(__unused async_context_t *context, __unused async_at_time_worker_t *worker) {
-	debug_put(LWIP_POLL_PENDING, false);
     assert(worker == &ethernet_timeout_worker);
     ethernet_arch_lwip_gpio_mask(); // Ensure non-polled devices won't interrupt us
-	debug_put(LWIP_ETH_POLL, true);
     for (auto handlePacket : _handlePacketList) {
         handlePacket.second();
         sys_check_timeouts();
     }
     ethernet_arch_lwip_gpio_unmask();
-	debug_put(LWIP_ETH_POLL, false);
 }
 
 // The when pending worker that's always pending and scheduling the actual ethernet_timeout_worker seems redundant
@@ -262,12 +259,9 @@ static void ethernet_timeout_reached(__unused async_context_t *context, __unused
 // This happens because user code leaving _context (see lwip_wrap.h) causes this worker to run,
 // which reschedules ethernet_timeout_worker.
 static void update_next_timeout(async_context_t *context, async_when_pending_worker_t *worker) {
-	debug_put(LWIP_NEXT_TIMEOUT_AT_TIME_WORKER, true);
     assert(worker == &always_pending_update_timeout_worker);
     worker->work_pending = true;
-	debug_put(LWIP_POLL_PENDING, true);
     async_context_add_at_time_worker_in_ms(context, &ethernet_timeout_worker, _pollingPeriod);
-	debug_put(LWIP_NEXT_TIMEOUT_AT_TIME_WORKER, false);
 }
 #endif
 
