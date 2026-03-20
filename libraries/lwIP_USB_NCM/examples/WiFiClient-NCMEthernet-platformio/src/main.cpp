@@ -34,8 +34,8 @@ void setup() {
     pinMode(12, OUTPUT);
 
     Serial1.end();
-    Serial1.setTX(16);
-    Serial1.setRX(17);
+    Serial1.setTX(0);
+    Serial1.setRX(1);
     Serial1.begin(115200);
 
     pinMode(LED_BUILTIN, OUTPUT);

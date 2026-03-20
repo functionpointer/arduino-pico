@@ -92,6 +92,10 @@ void NCMEthernet::end() {
     USB.connect();
 }
 
+bool NCMEthernet::isLinked() {
+	return tud_mounted();
+}
+
 // Need to define here so we don't have to include tusb.h in global header (causes problemw w/BT redefining things)
 void NCMEthernet::usbInterfaceCB(int itf, uint8_t *dst, int len) {
     uint8_t desc[TUD_CDC_NCM_DESC_LEN] = {

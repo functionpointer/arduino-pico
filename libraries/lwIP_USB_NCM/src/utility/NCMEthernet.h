@@ -73,12 +73,10 @@ public:
 
     void discardFrame(uint16_t ign);
 
-    bool interruptIsPossible() {
-        return false;
-    }
+	bool isLinked();
 
-    PinStatus interruptMode() {
-        return HIGH;
+    constexpr bool isLinkDetectable() const {
+        return true;
     }
 
     constexpr bool needsSPI() const {
@@ -115,6 +113,14 @@ protected:
 
     static void _usb_interface_cb(int itf, uint8_t *dst, int len, void *param) {
         ((NCMEthernet *)param)->usbInterfaceCB(itf, dst, len);
+    }
+
+	static constexpr bool interruptIsPossible() {
+        return false;
+    }
+
+    static constexpr PinStatus interruptMode() {
+        return HIGH;
     }
 
 };
